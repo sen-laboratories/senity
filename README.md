@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/images/senity-logo.jpg" width=240 />
+  <img src="assets/images/senity-logo.jpg" width=320 />
 </p>
 
 # SENity
