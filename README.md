@@ -1,4 +1,8 @@
-# senity
+<p align="center">
+  <img src="assets/images/senity-logo.jpg" width=240 />
+</p>
+
+# SENity
 
 a minimalistic semantic editor for your thoughts
 
