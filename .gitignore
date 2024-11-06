@@ -33,3 +33,5 @@
 *.app
 
 generated/
+objects.x86_64-cc13
+objects.x86_64-cc13-debug

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024, My Name <my@email.address>
+ * Copyright 2024, Gregor B. Rosenauer <gregor.rosenauer@gmail.com>
  * All rights reserved. Distributed under the terms of the MIT license.
  */
 

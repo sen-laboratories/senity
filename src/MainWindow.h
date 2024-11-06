@@ -7,10 +7,10 @@
 #include <FilePanel.h>
 #include <MenuBar.h>
 #include <MenuItem.h>
-#include <TextView.h>
+#include <TextControl.h>
 #include <Window.h>
 
-#include "MarkdownStyler.h"
+#include "EditorView.h"
 
 class MainWindow : public BWindow
 {
@@ -26,11 +26,8 @@ private:
 			status_t		_LoadSettings(BMessage& settings);
 			status_t		_SaveSettings();
 
-            void            MarkupText(int32 start = 0, int32 end = -1);
-
 			BMenuItem*		fSaveMenuItem;
 			BFilePanel*		fOpenPanel;
 			BFilePanel*		fSavePanel;
-            BTextView*      fEditorView;
-            MarkdownStyler* fMarkdownStyler;
+            EditorView*     fEditorView;
 };

@@ -164,7 +164,7 @@ typedef enum MD_TEXTTYPE {
     MD_TEXT_SOFTBR,     /* '\n' in source text where it is not semantically meaningful (soft break) */
 
     /* Entity.
-     * (a) Named entity, e.g. &nbsp; 
+     * (a) Named entity, e.g. &nbsp;
      *     (Note MD4C does not have a list of known entities.
      *     Anything matching the regexp /&[A-Za-z][A-Za-z0-9]{1,47};/ is
      *     treated as a named entity.)
@@ -366,7 +366,7 @@ typedef struct MD_PARSER {
     int (*enter_span)(MD_SPANTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
     int (*leave_span)(MD_SPANTYPE /*type*/, void* /*detail*/, void* /*userdata*/);
 
-    int (*text)(MD_TEXTTYPE /*type*/, const MD_CHAR* /*text*/, MD_SIZE /*size*/, void* /*userdata*/);
+    int (*text)(MD_TEXTTYPE /*type*/, const MD_CHAR* /*text*/, MD_OFFSET /*offset*/, MD_SIZE /*size*/, void* /*userdata*/);
 
     /* Debug callback. Optional (may be NULL).
      *

@@ -13,7 +13,6 @@
 #include <Menu.h>
 #include <MenuBar.h>
 #include <Path.h>
-#include <TextView.h>
 #include <View.h>
 
 #include <cstdio>
@@ -29,17 +28,16 @@ static const char* kSettingsFile = "senity_settings";
 
 MainWindow::MainWindow()
 	:
-	BWindow(BRect(100, 100, 500, 400), B_TRANSLATE("My window"), B_DOCUMENT_WINDOW,
-		B_ASYNCHRONOUS_CONTROLS | B_QUIT_ON_WINDOW_CLOSE)
+	BWindow(BRect(100.0, 100.0, 420.0, 580.0), B_TRANSLATE("New Note"), B_DOCUMENT_WINDOW,
+		B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS | B_QUIT_ON_WINDOW_CLOSE)
 {
-	BMenuBar* menuBar = _BuildMenu();
-    fEditorView = new BTextView("editorView");
-    fEditorView->SetFontAndColor(be_fixed_font);
+    SetLayout(new BGroupLayout(B_VERTICAL, 0));
 
-	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
-		.Add(menuBar)
-        .Add(fEditorView)
-		.End();
+	BMenuBar* menuBar = _BuildMenu();
+    fEditorView = new EditorView();
+
+	AddChild(menuBar);
+    AddChild(fEditorView);
 
 	BMessenger messenger(this);
 	fOpenPanel = new BFilePanel(B_OPEN_PANEL, &messenger, NULL, B_FILE_NODE, false);
@@ -48,15 +46,14 @@ MainWindow::MainWindow()
 	BMessage settings;
 	_LoadSettings(settings);
 
-    fMarkdownStyler = new MarkdownStyler();
-    fMarkdownStyler->Init();
-
 	BRect frame;
 	if (settings.FindRect("main_window_rect", &frame) == B_OK) {
 		MoveTo(frame.LeftTop());
 		ResizeTo(frame.Width(), Bounds().Height());
-	}
-	MoveOnScreen();
+        MoveOnScreen();
+	} else {
+        CenterOnScreen();
+    }
 }
 
 
@@ -66,6 +63,7 @@ MainWindow::~MainWindow()
 
 	delete fOpenPanel;
 	delete fSavePanel;
+    delete fEditorView;
 }
 
 
@@ -98,8 +96,7 @@ MainWindow::MessageReceived(BMessage* message)
 
             // TODO: check MIME type
             // LATER: only load portion of file if above certain size
-			fEditorView->SetText(&file, 0, size);
-            MarkupText(0, size);
+			fEditorView->SetText(&file, size);
 
             break;
 		}
@@ -224,11 +221,4 @@ MainWindow::_SaveSettings()
 		status = settings.Flatten(&file);
 
 	return status;
-}
-
-void MainWindow::MarkupText(int32 start, int32 end) {
-    char text[8192];
-    int32 size = end - start;
-    fEditorView->GetText(0, size, text);
-    fMarkdownStyler->MarkupText(text, size);
 }
