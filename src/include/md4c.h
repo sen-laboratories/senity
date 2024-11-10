@@ -294,7 +294,7 @@ typedef struct MD_SPAN_IMG_DETAIL {
 } MD_SPAN_IMG_DETAIL;
 
 /* Detailed info for MD_SPAN_WIKILINK. */
-typedef struct MD_SPAN_WIKILINK {
+typedef struct MD_SPAN_WIKILINK_DETAIL {
     MD_ATTRIBUTE target;
 } MD_SPAN_WIKILINK_DETAIL;
 

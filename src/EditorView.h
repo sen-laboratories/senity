@@ -8,9 +8,8 @@
 #include <GroupView.h>
 #include <ScrollView.h>
 #include <SupportDefs.h>
-#include <TextView.h>
 
-#include "MarkdownStyler.h"
+#include "EditorTextView.h"
 #include "StatusBar.h"
 
 class EditorView : public BView {
@@ -21,9 +20,6 @@ public:
     void        SetText(BFile *file, size_t size);
 
 private:
-    MarkdownStyler* fMarkdownStyler;
-
-    void            MarkupText(int32 start = 0, int32 end = -1);
 
     BTextView*      fTextView;
     BScrollView*	fScrollView;

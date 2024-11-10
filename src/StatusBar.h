@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <GridView.h>
+#include <GroupView.h>
 #include <SupportDefs.h>
 #include <TextControl.h>
 

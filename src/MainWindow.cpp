@@ -28,7 +28,7 @@ static const char* kSettingsFile = "senity_settings";
 
 MainWindow::MainWindow()
 	:
-	BWindow(BRect(100.0, 100.0, 420.0, 580.0), B_TRANSLATE("New Note"), B_DOCUMENT_WINDOW,
+	BWindow(BRect(100.0, 100.0, 320.0, 480.0), B_TRANSLATE("New Note"), B_DOCUMENT_WINDOW,
 		B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS | B_QUIT_ON_WINDOW_CLOSE)
 {
     SetLayout(new BGroupLayout(B_VERTICAL, 0));

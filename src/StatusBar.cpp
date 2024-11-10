@@ -14,12 +14,13 @@ StatusBar::StatusBar() : BView("status_bar", B_HORIZONTAL | B_WILL_DRAW | B_PULS
     fOffset = new BTextControl("offset", "-", new BMessage('offs'));
     fSelection = new BTextControl("selection", "-", new BMessage('slct'));
 
-    SetLayout(new BGridLayout(B_HORIZONTAL, 0));
-	BLayoutBuilder::Grid<>((BGridLayout*)GetLayout())
-		.Add(fLine, 0, 0)
-        .Add(fColumn, 1, 0)
-        .Add(fOffset, 2, 0)
-        .Add(fSelection, 3,0)
+    SetLayout(new BGroupLayout(B_HORIZONTAL, 0));
+	BLayoutBuilder::Group<>((BGroupLayout*)GetLayout())
+		.Add(fLine)
+        .Add(fColumn)
+        .Add(fOffset)
+        .Add(fSelection)
+        .AddGlue(3.0)
 		.End();
 }
 
