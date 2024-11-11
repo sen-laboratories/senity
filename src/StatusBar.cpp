@@ -9,10 +9,12 @@
 #include "StatusBar.h"
 
 StatusBar::StatusBar() : BView("status_bar", B_HORIZONTAL | B_WILL_DRAW | B_PULSE_NEEDED) {
-    fLine = new BTextControl("line`", "-", new BMessage('line'));
+    fLine = new BTextControl("line", "-", new BMessage('line'));
     fColumn = new BTextControl("column", "-", new BMessage('clmn'));
     fOffset = new BTextControl("offset", "-", new BMessage('offs'));
     fSelection = new BTextControl("selection", "-", new BMessage('slct'));
+    fSelection->SetEnabled(false);
+    fSelection->SetExplicitMinSize(BSize(64.0, be_plain_font->Size()));
 
     SetLayout(new BGroupLayout(B_HORIZONTAL, 0));
 	BLayoutBuilder::Group<>((BGroupLayout*)GetLayout())
@@ -22,6 +24,9 @@ StatusBar::StatusBar() : BView("status_bar", B_HORIZONTAL | B_WILL_DRAW | B_PULS
         .Add(fSelection)
         .AddGlue(3.0)
 		.End();
+
+    UpdatePosition(0, 1, 0);
+    UpdateSelection(0, 0);
 }
 
 StatusBar::~StatusBar() {
@@ -39,9 +44,14 @@ void StatusBar::UpdatePosition(int32 offset, int32 line, int32 column) {
 
 void StatusBar::UpdateSelection(int32 selectionStart, int32 selectionEnd) {
     BString selection;
-    selection << selectionStart << " - " << selectionEnd
-              << "(" << (selectionEnd - selectionStart) << ")";
-    fOffset->SetText(selection.String());
+    if (selectionStart != selectionEnd) {
+        selection << selectionStart << " - " << selectionEnd;
+    } else {
+        selection << "-";
+    }
+    selection << "(" << (selectionEnd - selectionStart) << " chars)";
+
+    fSelection->SetText(selection.String());
 }
 
 

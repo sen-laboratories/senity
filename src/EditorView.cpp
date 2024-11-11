@@ -40,5 +40,6 @@ EditorView::~EditorView() {
 }
 
 void EditorView::SetText(BFile* file, size_t size) {
+    printf("set text to file with size %zu\n", size);
     fTextView->SetText(file, 0, size);
 }

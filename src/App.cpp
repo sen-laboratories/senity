@@ -33,7 +33,7 @@ void
 App::AboutRequested()
 {
 	BAboutWindow* about
-		= new BAboutWindow(B_TRANSLATE_SYSTEM_NAME("SEnity"), kApplicationSignature);
+		= new BAboutWindow(B_TRANSLATE_SYSTEM_NAME("SENity"), kApplicationSignature);
 	about->AddDescription(B_TRANSLATE("A simple semantic notepad for your thoughts."));
 	about->AddCopyright(2024, "Gregor B. Rosenauer");
 	about->Show();

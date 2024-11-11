@@ -21,7 +21,7 @@ public:
 
 private:
 
-    BTextView*      fTextView;
+    EditorTextView* fTextView;
     BScrollView*	fScrollView;
     StatusBar*      fStatusBar;
 };

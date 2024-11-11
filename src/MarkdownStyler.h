@@ -5,24 +5,35 @@
 #pragma once
 
 #include "include/md4c.h"
-#include <ObjectList.h>
+#include <map>
 #include <SupportDefs.h>
+#include <vector>
 
-typedef enum MARKUP_TYPE {
+typedef enum MARKUP_CLASS {
     MARKUP_BLOCK = 0,
     MARKUP_SPAN,
     MARKUP_TEXT
-} markup_type;
+} markup_class;
 
-typedef struct text_data {
-    MARKUP_TYPE     markup_type;
+union markup_type {
     MD_BLOCKTYPE    block_type;
     MD_SPANTYPE     span_type;
     MD_TEXTTYPE     text_type;
-    void*           detail;
-    int32           offset;
-    int32           length;
+};
+
+typedef struct text_data {
+    MARKUP_CLASS            markup_class;
+    union markup_type       markup_type;
+    std::vector<text_data> *markup_stack;
+    void*                   detail;
+    int32                   offset;
+    int32                   length;
 } text_data;
+
+typedef struct text_info {
+    std::vector<text_data>      *markup_stack;   // temp stack for keeping track of nested block/span types before TEXT
+    std::map<int32, text_data>  *text_map;   // the actual markup info that is visible as text
+} text_info;
 
 class MarkdownStyler {
 
@@ -30,7 +41,7 @@ public:
                         MarkdownStyler();
     virtual             ~MarkdownStyler();
     void                Init();
-    int                 MarkupText(char* text, int32 size, BObjectList<text_data>* userdata);
+    int                 MarkupText(char* text, int32 size, text_info* userdata);
 
 private:
     MD_PARSER*          fParser;
@@ -42,7 +53,8 @@ private:
     static int          Text(MD_TEXTTYPE type, const MD_CHAR* text, MD_OFFSET offset, MD_SIZE size, void* userdata);
     static void         LogDebug(const char* msg, void* userdata);
 
-    static void         AddMetadata(MD_BLOCKTYPE blocktype, void* detail, void* userdata);
-    static void         AddMetadata(MD_SPANTYPE spantype, void* detail, void* userdata);
-    static void         AddMetadata(text_data* data, void* userdata);
+    static void         AddMarkupMetadata(MD_BLOCKTYPE blocktype, void* detail, void* userdata);
+    static void         AddMarkupMetadata(MD_SPANTYPE spantype, void* detail, void* userdata);
+    static void         AddToMarkupStack(text_data *data, void *userdata);
+    static void         AddTextMetadata(text_data* data, void* userdata);
 };
