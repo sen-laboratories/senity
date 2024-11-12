@@ -6,6 +6,7 @@
 
 #include "include/md4c.h"
 #include <map>
+#include <Message.h>
 #include <SupportDefs.h>
 #include <vector>
 
@@ -42,6 +43,9 @@ public:
     virtual             ~MarkdownStyler();
     void                Init();
     int                 MarkupText(char* text, int32 size, text_info* userdata);
+    static BMessage*    GetMarkupStack(text_data* info);
+    static BMessage*    GetDetailForBlockType(MD_BLOCKTYPE type, void* detail);
+    static BMessage*    GetDetailForSpanType(MD_SPANTYPE type, void* detail);
 
 private:
     MD_PARSER*          fParser;

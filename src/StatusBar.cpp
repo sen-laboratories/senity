@@ -62,18 +62,19 @@ void StatusBar::UpdateSelection(int32 selectionStart, int32 selectionEnd) {
     fSelection->SetText(selection.String());
 }
 
-void StatusBar::UpdateOutline(const BStringList* outlineItems) {
+void StatusBar::UpdateOutline(const BMessage* outlineItems) {
     if (outlineItems == NULL || outlineItems->IsEmpty()) {
     fOutline->SetText("");
         return;
     }
     BString outline;
-    for (int i = 0; i < outlineItems->CountStrings(); i++) {
+  /*  for (int i = 0; i < outlineItems->CountStrings(); i++) {
         if (i > 0) {
             outline << " > ";
         }
         outline << outlineItems->StringAt(i);
     }
     fOutline->SetText(outline.String());
+    */
 }
 

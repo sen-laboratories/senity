@@ -8,14 +8,6 @@
 
 #include "EditorTextView.h"
 
-const char *markup_class_name[] = {"block", "span", "text"};
-const char *block_type_name[] = {"doc", "block q", "UL", "OL", "LI", "HR", "H", "Code", "HTML",
-                                 "para", "table", "THEAD", "TBODY", "TR", "TH", "TD"};
-const char *span_type_name[] = {"em", "strong", "hyperlink", "image", "code", "strike", "LaTeX math",
-                                "latex math disp", "wiki link", "underline"};
-const char *text_type_name[] = {"normal", "NULL char", "hard break", "soft break", "entity",
-                                "code", "HTML", "LaTeX math"};
-
 EditorTextView::EditorTextView(BRect viewFrame, BRect textBounds, StatusBar *statusBar, BHandler *editorHandler)
 : BTextView(viewFrame, "textview", textBounds, B_FOLLOW_ALL, B_FRAME_EVENTS | B_WILL_DRAW)
 {
@@ -43,6 +35,11 @@ EditorTextView::~EditorTextView() {
     RemoveSelf();
     delete fMarkdownStyler;
     delete fTextInfo;
+}
+
+void EditorTextView::AttachedToWindow() {
+    BTextView::AttachedToWindow();
+    ResizeToPreferred();
 }
 
 void EditorTextView::SetText(const char* text, const text_run_array* runs) {
@@ -90,9 +87,6 @@ void EditorTextView::MouseDown(BPoint where) {
 
 void EditorTextView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessage) {
     BTextView::MouseMoved(where, code, dragMessage);
-
-    int32 offset = OffsetAt(where);
-    UpdateStatus();
 }
 
 void EditorTextView::UpdateStatus() {
@@ -105,47 +99,23 @@ void EditorTextView::UpdateStatus() {
     // update outline in status from block / span info contained in text info stack
     text_data *info = GetTextInfoAround(end);
     if (info == NULL) {
+        printf("no text info at offset %d\n", end);
         return;
     }
-
-    printf("got markup stack with %zu items\n", info->markup_stack->size());
-    BStringList *outlineItems = new BStringList(info->markup_stack->size() + 1);
-    const char *type;
-
-    for (auto item : *info->markup_stack) {
-        switch (item.markup_class) {
-            case MARKUP_BLOCK: {
-                type = block_type_name[item.markup_type.block_type];
-                break;
-            }
-            case MARKUP_SPAN: {
-                type = span_type_name[item.markup_type.span_type];
-                break;
-            }
-            case MARKUP_TEXT: {
-                type = text_type_name[item.markup_type.text_type];
-                break;
-            }
-            default: {
-                printf("unexpexted markup type %d!\n", info->markup_class);
-                continue;
-            }
-        }
-        outlineItems->Add(type);
-    }
+    BMessage* outlineItems = fMarkdownStyler->GetMarkupStack(info);
     // add leaf node text
-    outlineItems->Add(text_type_name[info->markup_type.text_type]);
-    printf("outlineItems: %s\n", outlineItems->Join(">").String());
+    //outlineItems->Add(text_type_name[info->markup_type.text_type]);
+    outlineItems->PrintToStream();
     fStatusBar->UpdateOutline(outlineItems);
 }
 
 text_data *EditorTextView::GetTextInfoAround(int32 offset) {
-    for (auto info = fTextInfo->text_map->begin();  info != fTextInfo->text_map->end(); info++) {
-        int32 mapOffset = info->first;
+    for (auto info : *fTextInfo->text_map) {
+        int32 mapOffset = info.first;
 
-        if (mapOffset >= offset && offset <= mapOffset + info->second.length) {
+        if (offset >= mapOffset && offset <= mapOffset + info.second.length) {
             printf("found text info @ %d for search offset %d\n", mapOffset, offset);
-            return &info->second;
+            return &fTextInfo->text_map->find(mapOffset)->second;
         }
     }
     return NULL;
@@ -164,15 +134,17 @@ void EditorTextView::ClearTextInfo(int32 start, int32 end) {
 
     int32 offset = offsetStart;
     for (auto data : *fTextInfo->text_map) {
-        if (data.first < offsetStart) {
+        if (data.first < offset) {
             printf("skipping index @%d < start %d\n", offset, offsetStart);
             continue;
-        } else if (data.first > offsetEnd) {
+        }
+        if (offset > offsetEnd) {
             printf("index @%d > end %d, done.\n", offset, offsetEnd);
             break;
         }
         printf("removing outdated textinfo @%d\n", offset);
         fTextInfo->text_map->erase(offset);
+        offset = data.first + 1;
     }
 }
 
@@ -192,19 +164,18 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
 
     printf("received %zu markup text blocks.\n", fTextInfo->text_map->size());
 
-    int32 offset = 0; // workaround for MD4C anomaly
+    int32 offset = -1;
     bool isLink;    //test
     bool isCode;    //test
     const rgb_color linkColor = ui_color(B_LINK_TEXT_COLOR);
     const rgb_color codeColor = ui_color(B_SHADOW_COLOR);
     const rgb_color textColor = ui_color(B_DOCUMENT_TEXT_COLOR);
 
-    for (auto info = fTextInfo->text_map->begin();  info != fTextInfo->text_map->end(); info++) {
-        int32 mapOffset = info->first;
-        printf("got offset %d\n", mapOffset);
-
+    for (auto info : *fTextInfo->text_map) {
+        int32 offset = info.first;
+        /*
         if (mapOffset < size) {
-            if (mapOffset> offset) {
+            if (mapOffset > offset) {
                 offset = mapOffset;
             } else {
                 if (mapOffset > 0) {
@@ -213,10 +184,12 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
                     printf("    ~bogus offset %d, fixing to %d\n", mapOffset, offset);
                 }
             }
-        }
+        }*/
 
-        auto userData = info->second;
+        auto userData = info.second;
         const char* markupType;
+        const char* detail;
+
         switch (userData.markup_class) {
             case MARKUP_BLOCK: {
                 markupType = "BLOCK";
@@ -281,8 +254,9 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
         }
 
         printf("#%d: <%s> @ %d - %d\n",
-            mapOffset, markupType,
+            offset, markupType,
             offset,
-            offset + userData.length);
+            offset + userData.length
+        );
     }
 }
