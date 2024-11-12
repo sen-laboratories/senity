@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <StringList.h>
 #include <GroupView.h>
 #include <SupportDefs.h>
 #include <TextControl.h>
@@ -16,10 +17,13 @@ public:
     virtual      ~StatusBar();
     void          UpdatePosition(int32 offset, int32 line, int32 column);
     void          UpdateSelection(int32 selectionStart, int32 selectionEnd);
+    void          UpdateOutline(const BStringList* outlineItems);
 
 private:
     BTextControl *fLine;
     BTextControl *fColumn;
     BTextControl *fOffset;
     BTextControl *fSelection;
+    // detail info on text outline from markup parser
+    BTextControl *fOutline;
 };

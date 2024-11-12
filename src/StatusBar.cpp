@@ -5,6 +5,7 @@
 
 #include <LayoutBuilder.h>
 #include <string>
+#include <SeparatorView.h>
 
 #include "StatusBar.h"
 
@@ -16,13 +17,19 @@ StatusBar::StatusBar() : BView("status_bar", B_HORIZONTAL | B_WILL_DRAW | B_PULS
     fSelection->SetEnabled(false);
     fSelection->SetExplicitMinSize(BSize(64.0, be_plain_font->Size()));
 
+    fOutline = new BTextControl("Outline", "-", new BMessage('Tout'));
+    fOutline->SetEnabled(false);
+    fOutline->SetExplicitMinSize(BSize(180.0, be_plain_font->Size()));
+
     SetLayout(new BGroupLayout(B_HORIZONTAL, 0));
 	BLayoutBuilder::Group<>((BGroupLayout*)GetLayout())
 		.Add(fLine)
         .Add(fColumn)
         .Add(fOffset)
         .Add(fSelection)
-        .AddGlue(3.0)
+        .Add(new BSeparatorView(B_VERTICAL, B_FANCY_BORDER))
+        .Add(fOutline)
+        .AddGlue(1.0)
 		.End();
 
     UpdatePosition(0, 1, 0);
@@ -34,6 +41,7 @@ StatusBar::~StatusBar() {
     delete fColumn;
     delete fOffset;
     delete fSelection;
+    delete fOutline;
 }
 
 void StatusBar::UpdatePosition(int32 offset, int32 line, int32 column) {
@@ -54,4 +62,18 @@ void StatusBar::UpdateSelection(int32 selectionStart, int32 selectionEnd) {
     fSelection->SetText(selection.String());
 }
 
+void StatusBar::UpdateOutline(const BStringList* outlineItems) {
+    if (outlineItems == NULL || outlineItems->IsEmpty()) {
+    fOutline->SetText("");
+        return;
+    }
+    BString outline;
+    for (int i = 0; i < outlineItems->CountStrings(); i++) {
+        if (i > 0) {
+            outline << " > ";
+        }
+        outline << outlineItems->StringAt(i);
+    }
+    fOutline->SetText(outline.String());
+}
 

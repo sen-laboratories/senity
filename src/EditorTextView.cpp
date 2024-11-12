@@ -8,9 +8,16 @@
 
 #include "EditorTextView.h"
 
+const char *markup_class_name[] = {"block", "span", "text"};
+const char *block_type_name[] = {"doc", "block q", "UL", "OL", "LI", "HR", "H", "Code", "HTML",
+                                 "para", "table", "THEAD", "TBODY", "TR", "TH", "TD"};
+const char *span_type_name[] = {"em", "strong", "hyperlink", "image", "code", "strike", "LaTeX math",
+                                "latex math disp", "wiki link", "underline"};
+const char *text_type_name[] = {"normal", "NULL char", "hard break", "soft break", "entity",
+                                "code", "HTML", "LaTeX math"};
+
 EditorTextView::EditorTextView(BRect viewFrame, BRect textBounds, StatusBar *statusBar, BHandler *editorHandler)
-: BTextView(viewFrame, "textview", textBounds,
-            B_FOLLOW_ALL, B_FRAME_EVENTS | B_WILL_DRAW)
+: BTextView(viewFrame, "textview", textBounds, B_FOLLOW_ALL, B_FRAME_EVENTS | B_WILL_DRAW)
 {
 	SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
 	SetLowUIColor(ViewUIColor());
@@ -50,14 +57,6 @@ void EditorTextView::SetText(BFile* file, int32 offset, size_t size) {
     UpdateStatus();
 }
 
-void EditorTextView::UpdateStatus() {
-    int32 start, end, line;
-    GetSelection(&start, &end);
-    line = CurrentLine();
-    fStatusBar->UpdatePosition(end, CurrentLine(), end - OffsetAt(line));
-    fStatusBar->UpdateSelection(start, end);
-}
-
 // hook methods
 void EditorTextView::DeleteText(int32 start, int32 finish) {
     BTextView::DeleteText(start, finish);
@@ -81,28 +80,12 @@ void EditorTextView::KeyDown(const char* bytes, int32 numBytes) {
     BTextView::KeyDown(bytes, numBytes);
 
     UpdateStatus();
-    int32 start, end;
-    GetSelection(&start, &end);
-
-    int32 from = OffsetAt(LineAt(start));         // extend back to start of line from insert offset
-    int32 to   = OffsetAt(LineAt(end) + 1);       // extend end offset to start of next line
-    MarkupText(start, to);
 }
 
 void EditorTextView::MouseDown(BPoint where) {
     BTextView::MouseDown(where);
-    int32 offset = OffsetAt(where);
+    //int32 offset = OffsetAt(where);
     UpdateStatus();
-
-    text_data *info = GetTextInfoAround(offset);
-    if (info == NULL) {
-        printf("no text info @%d\n", offset);
-        return;
-    }
-
-    printf("got text data at offset %ul with search offset %d:\nmarkup class %d, block type %d, span type %d, text type %d\n",
-            info->offset, offset, info->markup_class,
-            info->markup_type.block_type, info->markup_type.span_type, info->markup_type.text_type);
 }
 
 void EditorTextView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessage) {
@@ -112,12 +95,56 @@ void EditorTextView::MouseMoved(BPoint where, uint32 code, const BMessage* dragM
     UpdateStatus();
 }
 
+void EditorTextView::UpdateStatus() {
+    int32 start, end, line;
+    GetSelection(&start, &end);
+    line = CurrentLine();
+    fStatusBar->UpdatePosition(end, CurrentLine(), end - OffsetAt(line));
+    fStatusBar->UpdateSelection(start, end);
+
+    // update outline in status from block / span info contained in text info stack
+    text_data *info = GetTextInfoAround(end);
+    if (info == NULL) {
+        return;
+    }
+
+    printf("got markup stack with %zu items\n", info->markup_stack->size());
+    BStringList *outlineItems = new BStringList(info->markup_stack->size() + 1);
+    const char *type;
+
+    for (auto item : *info->markup_stack) {
+        switch (item.markup_class) {
+            case MARKUP_BLOCK: {
+                type = block_type_name[item.markup_type.block_type];
+                break;
+            }
+            case MARKUP_SPAN: {
+                type = span_type_name[item.markup_type.span_type];
+                break;
+            }
+            case MARKUP_TEXT: {
+                type = text_type_name[item.markup_type.text_type];
+                break;
+            }
+            default: {
+                printf("unexpexted markup type %d!\n", info->markup_class);
+                continue;
+            }
+        }
+        outlineItems->Add(type);
+    }
+    // add leaf node text
+    outlineItems->Add(text_type_name[info->markup_type.text_type]);
+    printf("outlineItems: %s\n", outlineItems->Join(">").String());
+    fStatusBar->UpdateOutline(outlineItems);
+}
+
 text_data *EditorTextView::GetTextInfoAround(int32 offset) {
     for (auto info = fTextInfo->text_map->begin();  info != fTextInfo->text_map->end(); info++) {
         int32 mapOffset = info->first;
 
         if (mapOffset >= offset && offset <= mapOffset + info->second.length) {
-            printf("found offset %d\n", mapOffset);
+            printf("found text info @ %d for search offset %d\n", mapOffset, offset);
             return &info->second;
         }
     }
@@ -171,8 +198,6 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
     const rgb_color linkColor = ui_color(B_LINK_TEXT_COLOR);
     const rgb_color codeColor = ui_color(B_SHADOW_COLOR);
     const rgb_color textColor = ui_color(B_DOCUMENT_TEXT_COLOR);
-
-    printf("styling...\n");
 
     for (auto info = fTextInfo->text_map->begin();  info != fTextInfo->text_map->end(); info++) {
         int32 mapOffset = info->first;
@@ -248,7 +273,7 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
                     isCode = false;
                 } else {
                     SetFontAndColor(offset, offset + userData.length,
-                                               be_plain_font, B_FONT_ALL);
+                                               be_plain_font, B_FONT_ALL, &textColor);
                 }
                 break;
             }
