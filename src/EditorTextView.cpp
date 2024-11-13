@@ -8,6 +8,10 @@
 
 #include "EditorTextView.h"
 
+const rgb_color linkColor = ui_color(B_LINK_TEXT_COLOR);
+const rgb_color codeColor = ui_color(B_SHADOW_COLOR);
+const rgb_color textColor = ui_color(B_DOCUMENT_TEXT_COLOR);
+
 EditorTextView::EditorTextView(BRect viewFrame, BRect textBounds, StatusBar *statusBar, BHandler *editorHandler)
 : BTextView(viewFrame, "textview", textBounds, B_FOLLOW_ALL, B_FRAME_EVENTS | B_WILL_DRAW)
 {
@@ -162,101 +166,116 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
     GetText(start, size, text);
     fMarkdownStyler->MarkupText(text, size, fTextInfo);
 
-    printf("received %zu markup text blocks.\n", fTextInfo->text_map->size());
-
-    int32 offset = -1;
-    bool isLink;    //test
-    bool isCode;    //test
-    const rgb_color linkColor = ui_color(B_LINK_TEXT_COLOR);
-    const rgb_color codeColor = ui_color(B_SHADOW_COLOR);
-    const rgb_color textColor = ui_color(B_DOCUMENT_TEXT_COLOR);
+    printf("received %zu markup text blocks, styling...\n", fTextInfo->text_map->size());
 
     for (auto info : *fTextInfo->text_map) {
-        int32 offset = info.first;
-        /*
-        if (mapOffset < size) {
-            if (mapOffset > offset) {
-                offset = mapOffset;
-            } else {
-                if (mapOffset > 0) {
-                    // verbatim inline blocks sometimes have a relative index ?!
-                    offset += mapOffset;
-                    printf("    ~bogus offset %d, fixing to %d\n", mapOffset, offset);
-                }
-            }
-        }*/
+        StyleText(&info.second);
+    }
+}
 
-        auto userData = info.second;
-        const char* markupType;
-        const char* detail;
+void EditorTextView::StyleText(text_data *userData) {
+    BFont font;
+    rgb_color color;
 
-        switch (userData.markup_class) {
+    CalcStyle(userData->markup_stack, &font, &color);
+    SetFontAndColor(userData->offset, userData->offset + userData->length, &font, B_FONT_ALL, &color);
+
+    printf("[%d + %d] calc style: %u\n", userData->offset, userData->length, font.FamilyAndStyle());
+}
+
+void EditorTextView::CalcStyle(std::vector<text_data> *markup_stack, BFont *font, rgb_color *color) {
+    font->SetFace(B_REGULAR_FACE);
+    *color = textColor;
+
+    for (auto stack_item : *markup_stack) {
+        switch (stack_item.markup_class) {
             case MARKUP_BLOCK: {
-                markupType = "BLOCK";
-                if (userData.markup_type.block_type == MD_BLOCK_CODE) {
-                    isCode = true;
-                    printf("  got block code...\n");
-
-                    MD_BLOCK_CODE_DETAIL *detail = (MD_BLOCK_CODE_DETAIL*) userData.detail;
-                    BString info(detail->info.text, detail->info.size); info << '\0';
-                    BString lang(detail->lang.text, detail->lang.size); lang << '\0';
-                    printf("  got block code with info %s, language %s\n", info.String(), lang.String());
+                switch (stack_item.markup_type.block_type) {
+                    case MD_BLOCK_CODE: {
+                        font->SetSpacing(B_FIXED_SPACING);
+                        *color = codeColor;
+                        break;
+                    }
+                    case MD_BLOCK_H: {
+                        BMessage *detail = fMarkdownStyler->GetDetailForBlockType(MD_BLOCK_H, stack_item.detail);
+                        uint8 level;
+                        if (detail->FindUInt8("level", &level) == B_OK) {
+                            float headerSizeFac = (7 - level) / 3.0;                // max 6 levels in markdown
+                            font->SetSize(be_plain_font->Size() * headerSizeFac);   // H1 = 2*normal size
+                            font->SetFace(B_HEAVY_FACE);
+                        }
+                        break;
+                    }
+                    case MD_BLOCK_QUOTE: {
+                        font->SetFace(B_ITALIC_FACE);
+                        *color = codeColor;
+                        break;
+                    }
+                    case MD_BLOCK_HR:
+                        font->SetFace(B_HEAVY_FACE);
+                        break;
+                    case MD_BLOCK_HTML: {
+                        font->SetSpacing(B_FIXED_SPACING);
+                        *color = codeColor;
+                        break;
+                    }
+                    case MD_BLOCK_P: {
+                        font->SetFace(B_REGULAR_FACE);
+                        *color = textColor;
+                        break;
+                    }
+                    case MD_BLOCK_TABLE: {
+                        font->SetSpacing(B_FIXED_SPACING);
+                        *color = codeColor;
+                        break;
+                    }
+                    default:
+                        break;
                 }
                 break;
             }
             case MARKUP_SPAN: {
-                markupType = "SPAN";
-                switch (userData.markup_type.span_type) {
-                    case MD_SPAN_A: {
-                        isLink = true;
-                        MD_SPAN_A_DETAIL *detail = (MD_SPAN_A_DETAIL*) userData.detail;
-                        BString title(detail->title.text, detail->title.size); title << '\0';
-                        BString href(detail->href.text, detail->href.size); href << '\0';
-
-                        printf("  got link with title: %s, href: <%s>\n", title.String(), href.String());
+                switch (stack_item.markup_type.span_type) {
+                    case MD_SPAN_A:
+                    case MD_SPAN_WIKILINK: {    // fallthrough
+                        font->SetFace(B_UNDERSCORE_FACE);
+                        *color = linkColor;
                         break;
                     }
-                    case MD_SPAN_WIKILINK: {
-                        isLink = true;
-                        MD_SPAN_WIKILINK_DETAIL *detail = (MD_SPAN_WIKILINK_DETAIL*) userData.detail;
-                        BString target(detail->target.text, detail->target.size); target << '\0';
-                        printf("  got wiki link with target: %s\n", target.String());
-
+                    case MD_SPAN_IMG: {
+                        font->SetSpacing(B_FIXED_SPACING);
+                        *color = linkColor;
                         break;
                     }
                     case MD_SPAN_CODE: {
-                        isCode = true;
-                        printf("  got code span\n");
+                        font->SetSpacing(B_FIXED_SPACING);
+                        *color = codeColor;
+                        break;
+                    }
+                    case MD_SPAN_DEL: {
+                        font->SetFace(B_STRIKEOUT_FACE);
+                        break;
+                    }
+                    case MD_SPAN_U: {
+                        font->SetFace(B_UNDERSCORE_FACE);
+                        break;
+                    }
+                    case MD_SPAN_STRONG: {
+                        font->SetFace(B_BOLD_FACE);
+                        break;
+                    }
+                    case MD_SPAN_EM: {
+                        font->SetFace(B_ITALIC_FACE);
                         break;
                     }
                     default:
-                        printf("  span type %d not handled yet.\n", userData.markup_type.span_type);
+                        printf("span type %s not handled yet.\n", MarkdownStyler::GetSpanTypeName(stack_item.markup_type.span_type));
                 }
                 break;
             }
-            case MARKUP_TEXT: {
-                markupType = "TEXT";
-                if (isLink) {
-                    SetFontAndColor(offset, offset + userData.length,
-                                               fLinkFont, B_FONT_ALL, &linkColor);
-                    isLink = false;
-                } else if (isCode) {
-                    SetFontAndColor(offset, offset + userData.length,
-                                               fCodeFont, B_FONT_ALL, &codeColor);
-                    isCode = false;
-                } else {
-                    SetFontAndColor(offset, offset + userData.length,
-                                               be_plain_font, B_FONT_ALL, &textColor);
-                }
-                break;
+            default: {
+                printf("markup type %d (TEXT) not expected here!\n", stack_item.markup_class);
             }
-            default: { markupType = "UNKNOWN"; }
         }
-
-        printf("#%d: <%s> @ %d - %d\n",
-            offset, markupType,
-            offset,
-            offset + userData.length
-        );
     }
 }

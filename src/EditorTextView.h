@@ -40,6 +40,8 @@ public:
 
 private:
     void            MarkupText(int32 start = 0, int32 end = -1);
+    void            StyleText(text_data* markupInfo);
+    void            CalcStyle(std::vector<text_data> *markup_stack, BFont *font, rgb_color *color);
     text_data      *GetTextInfoAround(int32 offset);
     void            ClearTextInfo(int32 start, int32 end);
     void            UpdateStatus();
