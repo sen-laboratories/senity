@@ -31,7 +31,7 @@ EditorTextView::EditorTextView(BRect viewFrame, BRect textBounds, StatusBar *sta
     fMarkdownStyler->Init();
 
     fTextInfo = new text_info;
-    fTextInfo->text_map = new std::map<int32, text_data>;
+    fTextInfo->text_map = new std::map<uint, text_data>;
     fTextInfo->markup_stack = new std::vector<text_data>;
 }
 
@@ -126,6 +126,13 @@ text_data *EditorTextView::GetTextInfoAround(int32 offset) {
 }
 
 void EditorTextView::ClearTextInfo(int32 start, int32 end) {
+    // optimize clear all case
+    if (start <= 1 && end >= TextLength()) {
+        fTextInfo->text_map->clear();
+        fTextInfo->markup_stack->clear();
+        return;
+    }
+
     text_data *data_start = GetTextInfoAround(start);
     if (data_start == NULL) return; // no text info!
     text_data *data_end = GetTextInfoAround(end);

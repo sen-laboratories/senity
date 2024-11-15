@@ -27,13 +27,13 @@ typedef struct text_data {
     union markup_type       markup_type;
     std::vector<text_data> *markup_stack;           // persistent stack for later calculation of style etc.
     void*                   detail;
-    int32                   offset;
-    int32                   length;
+    uint                    offset;
+    uint                    length;
 } text_data;
 
 typedef struct text_info {
     std::vector<text_data>      *markup_stack;      // temp stack for keeping track of nested block/span types before TEXT
-    std::map<int32, text_data>  *text_map;          // the actual markup info that is visible as text
+    std::map<uint, text_data>   *text_map;          // the actual markup info that is visible as text
 } text_info;
 
 class MarkdownStyler {
@@ -68,5 +68,5 @@ private:
     static void         AddToMarkupStack(text_data *data, void *userdata);
     static void         AddTextMetadata(text_data* data, void* userdata);
     // helper
-    static const char*  attr_to_str(MD_ATTRIBUTE *data);
+    static const char*  attr_to_str(MD_ATTRIBUTE data);
 };

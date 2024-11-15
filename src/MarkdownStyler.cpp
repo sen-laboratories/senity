@@ -5,6 +5,7 @@
 
 #include "MarkdownStyler.h"
 
+#include <String.h>
 #include <stdio.h>
 
 static const char *markup_class_name[] = {"block", "span", "text"};
@@ -14,6 +15,11 @@ static const char *span_type_name[] = {"em", "strong", "hyperlink", "image", "co
                                        "latex math disp", "wiki link", "underline"};
 static const char *text_type_name[] = {"normal", "NULL char", "hard break", "soft break", "entity",
                                        "code", "HTML", "LaTeX math"};
+
+const char* MarkdownStyler::GetBlockTypeName(MD_BLOCKTYPE type) { return block_type_name[type]; }
+const char* MarkdownStyler::GetSpanTypeName(MD_SPANTYPE type)   { return span_type_name[type];  }
+const char* MarkdownStyler::GetTextTypeName(MD_TEXTTYPE type)   { return text_type_name[type];  }
+
 
 MarkdownStyler::MarkdownStyler()
     : fParser(new MD_PARSER) {
@@ -36,7 +42,7 @@ void MarkdownStyler::Init() {
 int MarkdownStyler::MarkupText(char* text, int32 size,  text_info* userdata) {
     printf("Markdown parser parsing text of size %d chars\n", size);
 
-    int result = md_parse(text, size, fParser, userdata);
+    int result = md_parse(text, (uint) size, fParser, userdata);
     printf("Markdown parser returned status %d with %zu text elements.\n", result, userdata->text_map->size());
 
     return result;
@@ -82,18 +88,14 @@ int MarkdownStyler::LeaveSpan(MD_SPANTYPE type, void* detail, void* userdata)
 
 int MarkdownStyler::Text(MD_TEXTTYPE type, const MD_CHAR* text, MD_OFFSET offset, MD_SIZE size, void* userdata)
 {
+    printf("MD_TEXT call got offset %u, size %u and text %s\n", offset, size,
+        BString(text, size).String());
     text_data* data = new text_data;
     data->markup_class = MARKUP_TEXT;
     data->markup_type.text_type = type;
     data->offset = offset;
     data->length = size;
-    data->detail = new char[33];
-    MD_SIZE len = min_c(size, 32);
-    memcpy(data->detail, text, len);
-    ((char*)data->detail)[len] = '\0';
-
-    printf("Text type: %s, offset: %d, length: %d (%d), text: %s\n", text_type_name[type], offset, size, len,
-            (char *) data->detail);
+    data->detail = NULL;
 
     AddTextMetadata(data, userdata);
 
@@ -129,12 +131,13 @@ void MarkdownStyler::AddToMarkupStack(text_data *data, void *userdata) {
 
 void MarkdownStyler::AddTextMetadata(text_data *data, void* userdata)
 {
+    printf("AddTextMetaData: offset = %u, length = %u bytes\n", data->offset, data->length);
     text_info* user_data = reinterpret_cast<text_info*>(userdata);
+
     // copy over markup stack to text map at offset pos for interpretation (e.g. outline, styling) later
-    printf("got markup stack with %zu elements:\n", user_data->markup_stack->size());
-    data->markup_stack = new std::vector<text_data>(); //(user_data->markup_stack->size());
+    data->markup_stack = new std::vector<text_data>(user_data->markup_stack->size());
     *data->markup_stack = *user_data->markup_stack;
-    printf("storing markup stack with %zu elements:\n", data->markup_stack->size());
+    printf("stored markup stack with %zu elements:\n", data->markup_stack->size());
 
     user_data->markup_stack->clear();
     user_data->text_map->insert({data->offset, *data});
@@ -146,30 +149,15 @@ void MarkdownStyler::AddTextMetadata(text_data *data, void* userdata)
     delete tmp;
 }
 
-const char* MarkdownStyler::attr_to_str(MD_ATTRIBUTE *data) {
-    ulong len = sizeof(data->text);
-    if (data->text == NULL || len == 0) return "";
-
-    char *str = new char[len + 1];
-    strlcpy(str, data->text, len);
-    str[len] = '\0';
-
-    return str;
-}
-
-const char* MarkdownStyler::GetBlockTypeName(MD_BLOCKTYPE type) { return block_type_name[type]; }
-const char* MarkdownStyler::GetSpanTypeName(MD_SPANTYPE type)   { return span_type_name[type];  }
-const char* MarkdownStyler::GetTextTypeName(MD_TEXTTYPE type)   { return text_type_name[type];  }
-
 BMessage* MarkdownStyler::GetDetailForBlockType(MD_BLOCKTYPE type, void* detail) {
-    BMessage *detailMsg = new BMessage('Todt');
+    BMessage *detailMsg = new BMessage('Tbdt');
     if (detail == NULL) return detailMsg;
 
     switch (type) {
         case MD_BLOCK_CODE: {
             auto detailData = reinterpret_cast<MD_BLOCK_CODE_DETAIL*>(detail);
-            detailMsg->AddString("info", attr_to_str(& (detailData->info)));
-            detailMsg->AddString("lang", attr_to_str(& (detailData->lang)));
+            detailMsg->AddString("info", detailData->info.text);
+            detailMsg->AddString("lang", detailData->lang.text);
             break;
         }
         case MD_BLOCK_H: {
@@ -186,30 +174,33 @@ BMessage* MarkdownStyler::GetDetailForBlockType(MD_BLOCKTYPE type, void* detail)
 }
 
 BMessage* MarkdownStyler::GetDetailForSpanType(MD_SPANTYPE type, void* detail) {
-    BMessage *detailMsg = new BMessage('Todt');
+    BMessage *detailMsg = new BMessage('Tsdt');
     if (detail == NULL) return detailMsg;
 
     switch (type) {
         case MD_SPAN_A: {
             auto detailData = reinterpret_cast<MD_SPAN_A_DETAIL*>(detail);
-            detailMsg->AddString("title", attr_to_str(& (detailData->title)));
-            detailMsg->AddString("href", attr_to_str(& (detailData->href)));
+            detailMsg->AddString("title", detailData->title.text);
+            detailMsg->AddString("href",  detailData->href.text);
             detailMsg->AddBool("autoLink", detailData->is_autolink);
             break;
         }
         case MD_SPAN_IMG: {
             auto detailData = reinterpret_cast<MD_SPAN_IMG_DETAIL*>(detail);
-            detailMsg->AddString("title", attr_to_str(& (detailData->title)));
-            detailMsg->AddString("src", attr_to_str(& (detailData->src)));
+            printf("adding image detail of size %u\n", detailData->src.size);
+            detailMsg->AddString("title", detailData->title.text);
+            detailMsg->AddString("src", detailData->src.text);
             break;
         }
         case MD_SPAN_WIKILINK: {
             auto detailData = reinterpret_cast<MD_SPAN_WIKILINK_DETAIL*>(detail);
-            detailMsg->AddString("target", attr_to_str(& (detailData->target)));
+            printf("adding wiki link detail of size %u\n", detailData->target.size);
+            detailMsg->AddString("target", detailData->target.text);
             break;
         }
         default: {
-            printf("skipping unsupported span type %s.\n", span_type_name[type]);
+            printf("skipping unsupported/empty span type %s of size %lu: %s.\n",
+                    span_type_name[type], sizeof(detail), (char*) detail);
         }
     }
 
