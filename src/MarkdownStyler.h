@@ -26,7 +26,7 @@ typedef struct text_data {
     MARKUP_CLASS            markup_class;
     union markup_type       markup_type;
     std::vector<text_data> *markup_stack;           // persistent stack for later calculation of style etc.
-    void*                   detail;
+    BMessage               *detail;
     uint                    offset;
     uint                    length;
 } text_data;
@@ -63,8 +63,8 @@ private:
     static int          Text(MD_TEXTTYPE type, const MD_CHAR* text, MD_OFFSET offset, MD_SIZE size, void* userdata);
     static void         LogDebug(const char* msg, void* userdata);
     // parsing
-    static void         AddMarkupMetadata(MD_BLOCKTYPE blocktype, void* detail, void* userdata);
-    static void         AddMarkupMetadata(MD_SPANTYPE spantype, void* detail, void* userdata);
+    static void         AddMarkupMetadata(MD_BLOCKTYPE blocktype, BMessage* detail, void* userdata);
+    static void         AddMarkupMetadata(MD_SPANTYPE spantype, BMessage* detail, void* userdata);
     static void         AddToMarkupStack(text_data *data, void *userdata);
     static void         AddTextMetadata(text_data* data, void* userdata);
     // helper

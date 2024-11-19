@@ -39,22 +39,25 @@ EditorTextView::~EditorTextView() {
     RemoveSelf();
     delete fMarkdownStyler;
     delete fTextInfo;
+    delete fMessenger;
 }
 
 void EditorTextView::AttachedToWindow() {
     BTextView::AttachedToWindow();
-    ResizeToPreferred();
+    DoLayout();
 }
 
 void EditorTextView::SetText(const char* text, const text_run_array* runs) {
     BTextView::SetText(text, runs);
     MarkupText(0, TextLength());
+    DoLayout();
     UpdateStatus();
 }
 
 void EditorTextView::SetText(BFile* file, int32 offset, size_t size) {
     BTextView::SetText(file, offset, size);
     MarkupText(offset, TextLength());
+    DoLayout();
     UpdateStatus();
 }
 
@@ -107,8 +110,6 @@ void EditorTextView::UpdateStatus() {
         return;
     }
     BMessage* outlineItems = fMarkdownStyler->GetMarkupStack(info);
-    // add leaf node text
-    //outlineItems->Add(text_type_name[info->markup_type.text_type]);
     outlineItems->PrintToStream();
     fStatusBar->UpdateOutline(outlineItems);
 }
@@ -165,17 +166,18 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
         end = TextLength();
     }
     int32 size = end - start;
-    char text[size + 1];
-
     printf("markup text %d - %d\n", start, end);
     ClearTextInfo(start, end);
 
+    char text[size + 1];
     GetText(start, size, text);
     fMarkdownStyler->MarkupText(text, size, fTextInfo);
 
-    printf("received %zu markup text blocks, styling...\n", fTextInfo->text_map->size());
+    printf("\n*** received %zu markup text blocks, styling... ***\n", fTextInfo->text_map->size());
 
     for (auto info : *fTextInfo->text_map) {
+        // &info.first is the offset used as map key and for editor lookup on select/position
+        // for easier processing, it is also contained in &info.second and can be ignored here.
         StyleText(&info.second);
     }
 }
@@ -185,21 +187,18 @@ void EditorTextView::StyleText(text_data *userData) {
     rgb_color color;
 
     CalcStyle(userData->markup_stack, &font, &color);
-    SetFontAndColor(userData->offset, userData->offset + userData->length, &font, B_FONT_ALL, &color);
+    SetFontAndColor(userData->offset, userData->offset + userData->length, &font, B_FONT_FAMILY_AND_STYLE, &color);
 
     printf("[%d + %d] calc style: %u\n", userData->offset, userData->length, font.FamilyAndStyle());
 }
 
 void EditorTextView::CalcStyle(std::vector<text_data> *markup_stack, BFont *font, rgb_color *color) {
-    font->SetFace(B_REGULAR_FACE);
-    *color = textColor;
-
     for (auto stack_item : *markup_stack) {
         switch (stack_item.markup_class) {
             case MARKUP_BLOCK: {
                 switch (stack_item.markup_type.block_type) {
                     case MD_BLOCK_CODE: {
-                        font->SetSpacing(B_FIXED_SPACING);
+                        font = fCodeFont;
                         *color = codeColor;
                         break;
                     }
@@ -207,9 +206,14 @@ void EditorTextView::CalcStyle(std::vector<text_data> *markup_stack, BFont *font
                         BMessage *detail = fMarkdownStyler->GetDetailForBlockType(MD_BLOCK_H, stack_item.detail);
                         uint8 level;
                         if (detail->FindUInt8("level", &level) == B_OK) {
-                            float headerSizeFac = (7 - level) / 3.0;                // max 6 levels in markdown
+                            float headerSizeFac = (7 - level) / 3.2;                // max 6 levels in markdown
                             font->SetSize(be_plain_font->Size() * headerSizeFac);   // H1 = 2*normal size
-                            font->SetFace(B_HEAVY_FACE);
+                            if (level == 1) {
+                                font->SetFace(B_OUTLINED_FACE);
+                            } else {
+                                font->SetFace(B_HEAVY_FACE);
+                            }
+                            *color = codeColor;
                         }
                         break;
                     }
@@ -220,6 +224,7 @@ void EditorTextView::CalcStyle(std::vector<text_data> *markup_stack, BFont *font
                     }
                     case MD_BLOCK_HR:
                         font->SetFace(B_HEAVY_FACE);
+                        *color = codeColor;
                         break;
                     case MD_BLOCK_HTML: {
                         font->SetSpacing(B_FIXED_SPACING);
@@ -227,7 +232,7 @@ void EditorTextView::CalcStyle(std::vector<text_data> *markup_stack, BFont *font
                         break;
                     }
                     case MD_BLOCK_P: {
-                        font->SetFace(B_REGULAR_FACE);
+                        font = new BFont(be_plain_font);
                         *color = textColor;
                         break;
                     }
@@ -237,6 +242,8 @@ void EditorTextView::CalcStyle(std::vector<text_data> *markup_stack, BFont *font
                         break;
                     }
                     default:
+                        font = new BFont(be_plain_font);
+                        *color = textColor;
                         break;
                 }
                 break;
