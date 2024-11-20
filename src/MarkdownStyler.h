@@ -45,7 +45,7 @@ public:
 
     int                 MarkupText(char* text, int32 size, text_info* userdata);
 
-    static BMessage*    GetMarkupStack(text_data* info);
+    static BMessage*    GetOutline(text_data* info, bool names = false);
     static BMessage*    GetDetailForBlockType(MD_BLOCKTYPE type, void* detail);
     static BMessage*    GetDetailForSpanType(MD_SPANTYPE type, void* detail);
 
@@ -56,15 +56,15 @@ public:
 private:
     MD_PARSER*          fParser;
     // callback functions
-    static int          EnterBlock(MD_BLOCKTYPE type, void* detail, void* userdata);
-    static int          LeaveBlock(MD_BLOCKTYPE type, void* detail, void* userdata);
-    static int          EnterSpan(MD_SPANTYPE type, void* detail, void* userdata);
-    static int          LeaveSpan(MD_SPANTYPE type, void* detail, void* userdata);
+    static int          EnterBlock(MD_BLOCKTYPE type, MD_OFFSET offset, void* detail, void* userdata);
+    static int          LeaveBlock(MD_BLOCKTYPE type, MD_OFFSET offset, void* detail, void* userdata);
+    static int          EnterSpan(MD_SPANTYPE type, MD_OFFSET offset, void* detail, void* userdata);
+    static int          LeaveSpan(MD_SPANTYPE type, MD_OFFSET offset, void* detail, void* userdata);
     static int          Text(MD_TEXTTYPE type, const MD_CHAR* text, MD_OFFSET offset, MD_SIZE size, void* userdata);
     static void         LogDebug(const char* msg, void* userdata);
     // parsing
-    static void         AddMarkupMetadata(MD_BLOCKTYPE blocktype, BMessage* detail, void* userdata);
-    static void         AddMarkupMetadata(MD_SPANTYPE spantype, BMessage* detail, void* userdata);
+    static void         AddMarkupMetadata(MD_BLOCKTYPE blocktype, MD_OFFSET offset, BMessage* detail, void* userdata);
+    static void         AddMarkupMetadata(MD_SPANTYPE spantype, MD_OFFSET offset, BMessage* detail, void* userdata);
     static void         AddToMarkupStack(text_data *data, void *userdata);
     static void         AddTextMetadata(text_data* data, void* userdata);
     // helper
