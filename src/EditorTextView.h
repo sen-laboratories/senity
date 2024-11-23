@@ -41,7 +41,7 @@ public:
 private:
     void            MarkupText(int32 start = 0, int32 end = -1);
     void            StyleText(text_data* markupInfo);
-    void            CalcStyle(BMessage* outline, BFont *font, rgb_color *color);
+    void            CalcStyle(markup_stack* stack, BFont *font, rgb_color *color);
     void            GetBlockStyle(MD_BLOCKTYPE blockType, BMessage *detail, BFont *font, rgb_color *color);
     void            GetSpanStyle(MD_SPANTYPE spanType, BMessage *detail, BFont *font, rgb_color *color);
     void            ClearTextInfo(int32 start, int32 end);

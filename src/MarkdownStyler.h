@@ -18,18 +18,18 @@ typedef enum MD_CLASS {
     MD_TEXT
 } markup_class;
 
-union markup_type {
+typedef struct MD_TYPE {
     MD_BLOCKTYPE    block_type;
     MD_SPANTYPE     span_type;
     MD_TEXTTYPE     text_type;
-};
+} markup_type;
 
 typedef struct text_data {
-    MD_CLASS                markup_class;
-    union markup_type       markup_type;
-    BMessage               *detail;
-    uint                    offset;
-    uint                    length;
+    MD_CLASS        markup_class;
+    MD_TYPE         markup_type;
+    BMessage        *detail;
+    uint            offset;
+    uint            length;
 } text_data;
 
 typedef struct text_info {

@@ -87,6 +87,15 @@ void EditorTextView::KeyDown(const char* bytes, int32 numBytes) {
 
 void EditorTextView::MouseDown(BPoint where) {
     BTextView::MouseDown(where);
+    if ((modifiers() & B_COMMAND_KEY) != 0) {
+        // highlight block
+        int32 begin, end;
+        GetTextStackForBlockAt(OffsetAt(where), &begin, &end);
+        if (begin > 0 && end > 0) {
+            Highlight(0, 0);
+            Highlight(begin, end);
+        }
+    }
     UpdateStatus();
 }
 
@@ -285,131 +294,120 @@ void EditorTextView::StyleText(text_data *textData) {
     BFont font;
     rgb_color color;
 
-    BMessage *outlineDetail = GetOutlineAt(textData->offset);
-    CalcStyle(outlineDetail, &font, &color);
+    markup_stack *markupStack = GetTextStackTo(textData->offset);
+    CalcStyle(markupStack, &font, &color);
 
     BTextView::SetFontAndColor(textData->offset, textData->offset + textData->length,
                                &font, B_FONT_FAMILY_AND_STYLE, &color);
 }
 
-void EditorTextView::CalcStyle(BMessage* outline, BFont *font, rgb_color *color) {
-    uint8 type;
-    status_t result;
-    BMessage *detail = new BMessage();
-
-    for (int i = 0; i < outline->CountNames(B_UINT8_TYPE); i++) {
-        result = outline->FindUInt8("block:type", i, &type);
-        if (result == B_OK) {
-            result = outline->FindMessage("block:detail", i, detail);
-            if (result == B_OK) {
-                GetBlockStyle((MD_BLOCKTYPE) type, detail, font, color);
-            }
-        }
-        // now combine with span style
-        result = outline->FindUInt8("span:type", i, &type);
-        if (result == B_OK) {
-            result = outline->FindMessage("span:detail", i, detail);
-            if (result == B_OK) {
-                GetSpanStyle((MD_SPANTYPE) type, detail, font, color);
-            }
-        }
-        if (result != B_OK && result != B_NAME_NOT_FOUND) {
-            printf("failed to calculate style from outline: %s\n", strerror(result));
+void EditorTextView::CalcStyle(markup_stack* stack, BFont *font, rgb_color *color) {
+    for (auto info : *stack->text_stack) {
+        if (info.markup_class == MD_BLOCK_BEGIN) {
+            GetBlockStyle(info.markup_type.block_type, info.detail, font, color);
+        } else if (info.markup_class == MD_SPAN_BEGIN) {
+            GetSpanStyle(info.markup_type.span_type, info.detail, font, color);
         }
     }
 }
 
 void EditorTextView::GetBlockStyle(MD_BLOCKTYPE blockType, BMessage *detail, BFont *font, rgb_color *color) {
-    switch (blockType) {
-        case MD_BLOCK_CODE: {
-            font = fCodeFont;
-            *color = codeColor;
-            break;
-        }
-        case MD_BLOCK_H: {
-            uint8 level;
-            if (detail->FindUInt8("level", &level) == B_OK) {
-                float headerSizeFac = (7 - level) / 3.2;                // max 6 levels in markdown
-                font->SetSize(be_plain_font->Size() * headerSizeFac);   // H1 = 2*normal size
-                if (level == 1) {
-                    font->SetFace(B_OUTLINED_FACE);
-                } else {
-                    font->SetFace(B_HEAVY_FACE);
-                }
+    for (int i = 0; i < detail->CountNames(B_UINT8_TYPE); i++) {
+        switch (blockType) {
+            case MD_BLOCK_CODE: {
+                font = fCodeFont;
                 *color = codeColor;
+                break;
             }
-            break;
+            case MD_BLOCK_H: {
+                uint8 level;
+                if (detail->FindUInt8("level", &level) == B_OK) {
+                    float headerSizeFac = (7 - level) / 3.2;                // max 6 levels in markdown
+                    font->SetSize(be_plain_font->Size() * headerSizeFac);   // H1 = 2*normal size
+                    if (level == 1) {
+                        font->SetFace(B_OUTLINED_FACE);
+                    } else {
+                        font->SetFace(B_HEAVY_FACE);
+                    }
+                    *color = codeColor;
+                }
+                break;
+            }
+            case MD_BLOCK_QUOTE: {
+                font->SetFace(B_ITALIC_FACE);
+                *color = codeColor;
+                break;
+            }
+            case MD_BLOCK_HR:
+                font->SetFace(B_HEAVY_FACE);
+                *color = codeColor;
+                break;
+            case MD_BLOCK_HTML: {
+                font->SetSpacing(B_FIXED_SPACING);
+                *color = codeColor;
+                break;
+            }
+            case MD_BLOCK_P: {
+                font = new BFont(be_plain_font);
+                *color = textColor;
+                break;
+            }
+            case MD_BLOCK_TABLE: {
+                font->SetSpacing(B_FIXED_SPACING);
+                *color = codeColor;
+                break;
+            }
+            default:
+                printf("unhandled block type %s treated as default.\n", MarkdownStyler::GetBlockTypeName(blockType));
+                font = new BFont(be_plain_font);
+                *color = textColor;
+                break;
         }
-        case MD_BLOCK_QUOTE: {
-            font->SetFace(B_ITALIC_FACE);
-            *color = codeColor;
-            break;
-        }
-        case MD_BLOCK_HR:
-            font->SetFace(B_HEAVY_FACE);
-            *color = codeColor;
-            break;
-        case MD_BLOCK_HTML: {
-            font->SetSpacing(B_FIXED_SPACING);
-            *color = codeColor;
-            break;
-        }
-        case MD_BLOCK_P: {
-            font = new BFont(be_plain_font);
-            *color = textColor;
-            break;
-        }
-        case MD_BLOCK_TABLE: {
-            font->SetSpacing(B_FIXED_SPACING);
-            *color = codeColor;
-            break;
-        }
-        default:
-            printf("unhandled block type %s treated as default.\n", MarkdownStyler::GetBlockTypeName(blockType));
-            font = new BFont(be_plain_font);
-            *color = textColor;
-            break;
     }
+    printf("got font %d and color brightness %d\n", font->Face(), color->Brightness());
 }
 
 void EditorTextView::GetSpanStyle(MD_SPANTYPE spanType, BMessage *detail, BFont *font, rgb_color *color) {
-    switch (spanType) {
-        case MD_SPAN_A:
-        case MD_SPAN_WIKILINK: {    // fallthrough
-            font->SetFace(B_UNDERSCORE_FACE);
-            *color = linkColor;
-            break;
+    for (int i = 0; i < detail->CountNames(B_UINT8_TYPE); i++) {
+        switch (spanType) {
+            case MD_SPAN_A:
+            case MD_SPAN_WIKILINK: {    // fallthrough
+                font->SetFace(B_UNDERSCORE_FACE);
+                *color = linkColor;
+                break;
+            }
+            case MD_SPAN_IMG: {
+                font->SetSpacing(B_FIXED_SPACING);
+                *color = linkColor;
+                break;
+            }
+            case MD_SPAN_CODE: {
+                font->SetSpacing(B_FIXED_SPACING);
+                *color = codeColor;
+                break;
+            }
+            case MD_SPAN_DEL: {
+                font->SetFace(B_STRIKEOUT_FACE);
+                break;
+            }
+            case MD_SPAN_U: {
+                font->SetFace(B_UNDERSCORE_FACE);
+                break;
+            }
+            case MD_SPAN_STRONG: {
+                font->SetFace(B_BOLD_FACE);
+                break;
+            }
+            case MD_SPAN_EM: {
+                font->SetFace(B_ITALIC_FACE);
+                break;
+            }
+            default:
+                printf("unhandled block type %s treated as default.\n", MarkdownStyler::GetSpanTypeName(spanType));
+                font = new BFont(be_plain_font);
+                *color = textColor;
+                break;
         }
-        case MD_SPAN_IMG: {
-            font->SetSpacing(B_FIXED_SPACING);
-            *color = linkColor;
-            break;
-        }
-        case MD_SPAN_CODE: {
-            font->SetSpacing(B_FIXED_SPACING);
-            *color = codeColor;
-            break;
-        }
-        case MD_SPAN_DEL: {
-            font->SetFace(B_STRIKEOUT_FACE);
-            break;
-        }
-        case MD_SPAN_U: {
-            font->SetFace(B_UNDERSCORE_FACE);
-            break;
-        }
-        case MD_SPAN_STRONG: {
-            font->SetFace(B_BOLD_FACE);
-            break;
-        }
-        case MD_SPAN_EM: {
-            font->SetFace(B_ITALIC_FACE);
-            break;
-        }
-        default:
-            printf("unhandled block type %s treated as default.\n", MarkdownStyler::GetSpanTypeName(spanType));
-            font = new BFont(be_plain_font);
-            *color = textColor;
-            break;
     }
+    printf("got font %d and color brightness %d\n", font->Face(), color->Brightness());
 }
