@@ -8,7 +8,7 @@
 #include <String.h>
 #include <stdio.h>
 
-static const char *markup_class_name[] = {"block", "span", "text"};
+static const char *markup_class_name[] = {"block_begin", "block_end", "span_begin", "span_end", "text"};
 static const char *block_type_name[] = {"doc", "block q", "UL", "OL", "LI", "HR", "H", "Code", "HTML",
                                         "para", "table", "THEAD", "TBODY", "TR", "TH", "TD"};
 static const char *span_type_name[] = {"em", "strong", "hyperlink", "image", "code", "strike", "LaTeX math",
@@ -19,6 +19,8 @@ static const char *text_type_name[] = {"normal", "NULL char", "hard break", "sof
 const char* MarkdownStyler::GetBlockTypeName(MD_BLOCKTYPE type) { return block_type_name[type]; }
 const char* MarkdownStyler::GetSpanTypeName(MD_SPANTYPE type)   { return span_type_name[type];  }
 const char* MarkdownStyler::GetTextTypeName(MD_TEXTTYPE type)   { return text_type_name[type];  }
+const char* MarkdownStyler::GetMarkupClassName(MD_CLASS type)   { return markup_class_name[type];  }
+
 const char* MarkdownStyler::attr_to_str(MD_ATTRIBUTE data) {
     if (data.text == NULL || data.size < 2) return "";
     printf("attr_to_str got text %s with length %u\n", data.text, data.size);
@@ -59,7 +61,7 @@ int MarkdownStyler::EnterBlock(MD_BLOCKTYPE type, MD_OFFSET offset, void* detail
     printf("EnterBlock type %s, offset: %u, detail:\n", block_type_name[type], offset);
     BMessage *detailMsg = GetDetailForBlockType(type, detail);
 
-    AddMarkupMetadata(type, offset, detailMsg, userdata);
+    AddMarkupMetadata(MD_BLOCK_BEGIN, type, offset, detailMsg, userdata);
     return 0;
 }
 
@@ -67,8 +69,8 @@ int MarkdownStyler::LeaveBlock(MD_BLOCKTYPE type, MD_OFFSET offset, void* detail
 {
     printf("LeaveBlock type %s, offset: %u, detail:\n", block_type_name[type], offset);
     BMessage *detailMsg = GetDetailForBlockType(type, detail);
-    detailMsg->PrintToStream();
-    //AddMarkupMetadata(type, offset, detailMsg, userdata);
+
+    AddMarkupMetadata(MD_BLOCK_END,type, offset, detailMsg, userdata);
     return 0;
 }
 
@@ -77,7 +79,7 @@ int MarkdownStyler::EnterSpan(MD_SPANTYPE type, MD_OFFSET offset, void* detail, 
     printf("EnterSpan type %s, offset: %u, detail:\n", span_type_name[type], offset);
     BMessage *detailMsg = GetDetailForSpanType(type, detail);
 
-    AddMarkupMetadata(type, offset, detailMsg, userdata);
+    AddMarkupMetadata(MD_SPAN_BEGIN,type, offset, detailMsg, userdata);
     return 0;
 }
 
@@ -85,68 +87,56 @@ int MarkdownStyler::LeaveSpan(MD_SPANTYPE type, MD_OFFSET offset, void* detail, 
 {
     printf("LeaveSpan type %s, offset: %u, detail:\n", span_type_name[type], offset);
     BMessage *detailMsg = GetDetailForSpanType(type, detail);
-    detailMsg->PrintToStream();
-    //AddMarkupMetadata(type, offset, detailMsg, userdata);
+
+    AddMarkupMetadata(MD_SPAN_END,type, offset, detailMsg, userdata);
     return 0;
 }
 
 int MarkdownStyler::Text(MD_TEXTTYPE type, const MD_CHAR* text, MD_OFFSET offset, MD_SIZE size, void* userdata)
 {
-    printf("MD_TEXT with offset %u, size %u.\n", offset, size);
     text_data* data = new text_data;
-    data->markup_class = MARKUP_TEXT;
+    data->markup_class = MD_TEXT;
     data->markup_type.text_type = type;
     data->offset = offset;
     data->length = size;
     data->detail = NULL;    // text is in document and will be rendered according to markup stack and length given here
 
+    printf("adding text metadata at %d with len %d\n", data->offset, data->length);
     AddTextMetadata(data, userdata);
 
     return 0;
 }
 
-void MarkdownStyler::AddMarkupMetadata(MD_BLOCKTYPE blocktype, MD_OFFSET offset, BMessage* detail, void* userdata)
+void MarkdownStyler::AddMarkupMetadata(MD_CLASS markupClass, MD_BLOCKTYPE blocktype, MD_OFFSET offset, BMessage* detail, void* userdata)
 {
     text_data* data = new text_data;
-    data->markup_class = MARKUP_BLOCK;
+    data->markup_class = markupClass;
     data->markup_type.block_type = blocktype;
     data->offset = offset;
     data->detail = detail;
     data->length = 0;   // meta, length is only used/relevant for TEXT
 
-    AddToMarkupStack(data, userdata);
+    AddTextMetadata(data, userdata);
 }
 
-void MarkdownStyler::AddMarkupMetadata(MD_SPANTYPE spantype, MD_OFFSET offset, BMessage* detail, void* userdata)
+void MarkdownStyler::AddMarkupMetadata(MD_CLASS markupClass, MD_SPANTYPE spantype, MD_OFFSET offset, BMessage* detail, void* userdata)
 {
     text_data* data = new text_data;
-    data->markup_class = MARKUP_SPAN;
+    data->markup_class = markupClass;
     data->markup_type.span_type = spantype;
     data->offset = offset;
     data->detail = detail;
     data->length = 0;   // meta, length is only used for TEXT
 
-    AddToMarkupStack(data, userdata);
+    AddTextMetadata(data, userdata);
 }
 
-void MarkdownStyler::AddToMarkupStack(text_data *data, void *userdata) {
-    text_info* user_data = reinterpret_cast<text_info*>(userdata);
-    user_data->markup_stack->push_back(*data);
-}
-
+/**
+ * store text offset with markup info for later reference (styling, semantics).
+ */
 void MarkdownStyler::AddTextMetadata(text_data *data, void* userdata)
 {
-    printf("AddTextMetaData: offset = %u, length = %u bytes\n", data->offset, data->length);
     text_info* user_data = reinterpret_cast<text_info*>(userdata);
-
-    // copy over markup stack to text map at offset pos for interpretation (e.g. outline, styling) later
-    data->markup_stack = new std::vector<text_data>(user_data->markup_stack->size());
-    *data->markup_stack = *user_data->markup_stack;
-    printf("stored markup stack with %zu elements:\n", data->markup_stack->size());
-
-    // clear stack from block/span parsing for next round
-    user_data->markup_stack->clear();
-    // store text bounds with markup stack for later reference (styling, semantics)
     user_data->text_map->insert({data->offset, *data});
 }
 
@@ -203,45 +193,6 @@ BMessage* MarkdownStyler::GetDetailForSpanType(MD_SPANTYPE type, void* detail) {
     }
 
     return detailMsg;
-}
-
-BMessage* MarkdownStyler::GetOutline(text_data* info, bool names) {
-    BMessage *outlineMsg = new BMessage('Tout');
-
-    for (auto item : *info->markup_stack) {
-        switch (item.markup_class) {
-            case MARKUP_BLOCK: {
-                outlineMsg->AddUInt8("block:type", item.markup_type.block_type);
-                outlineMsg->AddMessage("block:detail", item.detail != NULL ? item.detail : new BMessage());
-                if (names) {
-                    outlineMsg->AddString("block:name", block_type_name[item.markup_type.block_type]);
-                }
-                break;
-            }
-            case MARKUP_SPAN: {
-                outlineMsg->AddUInt8("span:type", item.markup_type.span_type);
-                outlineMsg->AddMessage("span:detail", item.detail != NULL ? item.detail : new BMessage());
-                if (names) {
-                    outlineMsg->AddString("span:name", span_type_name[item.markup_type.span_type]);
-                }
-                break;
-            }
-            case MARKUP_TEXT: {
-                outlineMsg->AddUInt8("text:type", item.markup_type.text_type);
-                outlineMsg->AddMessage("text:detail", item.detail != NULL ? item.detail : new BMessage());
-                if (names) {
-                    outlineMsg->AddString("text:name", text_type_name[item.markup_type.text_type]);
-                }
-                break;
-            }
-            default: {
-                printf("unexpexted markup type %d!\n", item.markup_class);
-                continue;
-            }
-        }
-    }
-    outlineMsg->PrintToStream();
-    return outlineMsg;
 }
 
 /*
