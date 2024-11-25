@@ -32,12 +32,17 @@ typedef struct text_data {
     uint            length;
 } text_data;
 
+/**
+ * Markdown text has block/span markers overlapping with text, which starts at same pos as a block/span opener.
+ * We want to use the text offset as a key, hence the 2 separate maps.
+ */
 typedef struct text_info {
-    std::map<uint, text_data>   *text_map;          // holds metadata from parsing like blocks and spans
+    std::map<uint, text_data*>  *markup_map;        // holds metadata from parsing like blocks and spans
+    std::map<uint, text_data*>  *text_map;          // holds metadata from parsing TEXT only
 } text_info;
 
 typedef struct markup_stack {
-    std::vector<text_data>      *text_stack;
+    std::vector<text_data*>     *markup_stack;
 } markup_stack;
 
 class MarkdownStyler {
@@ -69,6 +74,7 @@ private:
     // parsing
     static void         AddMarkupMetadata(MD_CLASS markupClass, MD_BLOCKTYPE blocktype, MD_OFFSET offset, BMessage* detail, void* userdata);
     static void         AddMarkupMetadata(MD_CLASS markupClass, MD_SPANTYPE spantype, MD_OFFSET offset, BMessage* detail, void* userdata);
+    static void         AddMarkupMetadata(text_data *data, MD_OFFSET offset, BMessage* detail, void* userdata);
     static void         AddTextMetadata(text_data* data, void* userdata);
     // helper
     static const char*  attr_to_str(MD_ATTRIBUTE data);

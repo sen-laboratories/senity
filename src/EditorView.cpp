@@ -23,7 +23,8 @@ EditorView::EditorView() : BView("editor_view", B_WILL_DRAW | B_PULSE_NEEDED) {
     fTextView->SetDoesUndo(true);
     fTextView->SetWordWrap(false);
     fTextView->SetFontAndColor(be_plain_font);
-    fTextView->SetText("# Welcome to SENity!\n\na _new_ `/home` for your *thoughts*.\n");   // this forces a relayout and avoids a grey border to the right
+    // this forces a relayout and avoids a grey border to the right
+    fTextView->SetText("# Welcome to SENity!\n\n## Getting Started\n\na __new__ ```/home``` for your ~~thoughts~~.\n");
 
     fScrollView = new BScrollView("scrollview", fTextView, B_FOLLOW_ALL, 0, true, true);
 

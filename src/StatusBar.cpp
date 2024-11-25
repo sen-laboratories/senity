@@ -27,7 +27,6 @@ StatusBar::StatusBar() : BView("status_bar", B_HORIZONTAL | B_WILL_DRAW | B_PULS
         .Add(fColumn)
         .Add(fOffset)
         .Add(fSelection)
-        .Add(new BSeparatorView(B_VERTICAL, B_FANCY_BORDER))
         .Add(fOutline)
         .AddGlue(1.0)
 		.End();

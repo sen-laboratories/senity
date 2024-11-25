@@ -6,11 +6,12 @@
 #include "MarkdownStyler.h"
 
 #include <String.h>
+#include <cassert>
 #include <stdio.h>
 
-static const char *markup_class_name[] = {"block_begin", "block_end", "span_begin", "span_end", "text"};
-static const char *block_type_name[] = {"doc", "block q", "UL", "OL", "LI", "HR", "H", "Code", "HTML",
-                                        "para", "table", "THEAD", "TBODY", "TR", "TH", "TD"};
+static const char *markup_class_name[] = {"block_begin", "block_end", "span_begin", "span_end", "TEXT"};
+static const char *block_type_name[] = {"doc", "bq", "ul", "ol", "li", "hr", "h", "code", "HTML",
+                                        "para", "table", "thead", "tbody", "tr", "th", "td"};
 static const char *span_type_name[] = {"em", "strong", "hyperlink", "image", "code", "strike", "LaTeX math",
                                        "latex math disp", "wiki link", "underline"};
 static const char *text_type_name[] = {"normal", "NULL char", "hard break", "soft break", "entity",
@@ -48,16 +49,18 @@ void MarkdownStyler::Init() {
 int MarkdownStyler::MarkupText(char* text, int32 size,  text_info* userdata) {
     printf("Markdown parser parsing text of size %d chars\n", size);
 
-    int result = md_parse(text, (uint) size, fParser, userdata);
-    printf("Markdown parser returned status %d with %zu text elements.\n", result, userdata->text_map->size());
-
-    return result;
+    return md_parse(text, (uint) size, fParser, userdata);
 }
 
 // callback functions
 
 int MarkdownStyler::EnterBlock(MD_BLOCKTYPE type, MD_OFFSET offset, void* detail, void* userdata)
 {
+    // ignore document block, not needed and may only cause problems with offset map, esp. on block leave (para+doc)
+    if (type == MD_BLOCK_DOC) {
+        printf("EnterBlock ignoring type %s, offset: %u\n", block_type_name[type], offset);
+        return 0;
+    }
     printf("EnterBlock type %s, offset: %u, detail:\n", block_type_name[type], offset);
     BMessage *detailMsg = GetDetailForBlockType(type, detail);
 
@@ -67,10 +70,15 @@ int MarkdownStyler::EnterBlock(MD_BLOCKTYPE type, MD_OFFSET offset, void* detail
 
 int MarkdownStyler::LeaveBlock(MD_BLOCKTYPE type, MD_OFFSET offset, void* detail, void* userdata)
 {
+    // ignore document boundary, not needed and may only cause problems with offset map, esp. on block leave (para+doc)
+    if (type == MD_BLOCK_DOC) {
+        printf("LeaveBlock ignoring type %s, offset: %u\n", block_type_name[type], offset);
+        return 0;
+    }
     printf("LeaveBlock type %s, offset: %u, detail:\n", block_type_name[type], offset);
     BMessage *detailMsg = GetDetailForBlockType(type, detail);
 
-    AddMarkupMetadata(MD_BLOCK_END,type, offset, detailMsg, userdata);
+    AddMarkupMetadata(MD_BLOCK_END, type, offset, detailMsg, userdata);
     return 0;
 }
 
@@ -79,7 +87,7 @@ int MarkdownStyler::EnterSpan(MD_SPANTYPE type, MD_OFFSET offset, void* detail, 
     printf("EnterSpan type %s, offset: %u, detail:\n", span_type_name[type], offset);
     BMessage *detailMsg = GetDetailForSpanType(type, detail);
 
-    AddMarkupMetadata(MD_SPAN_BEGIN,type, offset, detailMsg, userdata);
+    AddMarkupMetadata(MD_SPAN_BEGIN, type, offset, detailMsg, userdata);
     return 0;
 }
 
@@ -88,20 +96,21 @@ int MarkdownStyler::LeaveSpan(MD_SPANTYPE type, MD_OFFSET offset, void* detail, 
     printf("LeaveSpan type %s, offset: %u, detail:\n", span_type_name[type], offset);
     BMessage *detailMsg = GetDetailForSpanType(type, detail);
 
-    AddMarkupMetadata(MD_SPAN_END,type, offset, detailMsg, userdata);
+    AddMarkupMetadata(MD_SPAN_END, type, offset, detailMsg, userdata);
     return 0;
 }
 
 int MarkdownStyler::Text(MD_TEXTTYPE type, const MD_CHAR* text, MD_OFFSET offset, MD_SIZE size, void* userdata)
 {
     text_data* data = new text_data;
+    // text is already stored in the document and will be rendered according to block/span markup and MD_TEXTTYPE
     data->markup_class = MD_TEXT;
     data->markup_type.text_type = type;
     data->offset = offset;
     data->length = size;
-    data->detail = NULL;    // text is in document and will be rendered according to markup stack and length given here
+    data->detail = new BMessage();
 
-    printf("adding text metadata at %d with len %d\n", data->offset, data->length);
+    printf("adding TEXT @ %d with len %d\n", data->offset, data->length);
     AddTextMetadata(data, userdata);
 
     return 0;
@@ -112,11 +121,8 @@ void MarkdownStyler::AddMarkupMetadata(MD_CLASS markupClass, MD_BLOCKTYPE blockt
     text_data* data = new text_data;
     data->markup_class = markupClass;
     data->markup_type.block_type = blocktype;
-    data->offset = offset;
-    data->detail = detail;
-    data->length = 0;   // meta, length is only used/relevant for TEXT
 
-    AddTextMetadata(data, userdata);
+    AddMarkupMetadata(data, offset, detail, userdata);
 }
 
 void MarkdownStyler::AddMarkupMetadata(MD_CLASS markupClass, MD_SPANTYPE spantype, MD_OFFSET offset, BMessage* detail, void* userdata)
@@ -124,11 +130,24 @@ void MarkdownStyler::AddMarkupMetadata(MD_CLASS markupClass, MD_SPANTYPE spantyp
     text_data* data = new text_data;
     data->markup_class = markupClass;
     data->markup_type.span_type = spantype;
+
+    AddMarkupMetadata(data, offset, detail, userdata);
+}
+
+/**
+ * store text offset with markup info for later reference (styling, semantics).
+ */
+void MarkdownStyler::AddMarkupMetadata(text_data *data, MD_OFFSET offset, BMessage* detail, void* userdata)
+{
+    text_info* text_data = reinterpret_cast<text_info*>(userdata);
     data->offset = offset;
     data->detail = detail;
     data->length = 0;   // meta, length is only used for TEXT
 
-    AddTextMetadata(data, userdata);
+    // offsets must not overlap, markup offset must be unique!
+    assert(text_data->markup_map->find(data->offset) == text_data->markup_map->cend());
+
+    text_data->markup_map->insert({data->offset, data});
 }
 
 /**
@@ -136,8 +155,12 @@ void MarkdownStyler::AddMarkupMetadata(MD_CLASS markupClass, MD_SPANTYPE spantyp
  */
 void MarkdownStyler::AddTextMetadata(text_data *data, void* userdata)
 {
-    text_info* user_data = reinterpret_cast<text_info*>(userdata);
-    user_data->text_map->insert({data->offset, *data});
+    text_info* text_data = reinterpret_cast<text_info*>(userdata);
+
+    // offsets must not overlap, text offset must be unique!
+    assert(text_data->text_map->find(data->offset) == text_data->text_map->cend());
+
+    text_data->text_map->insert({data->offset, data});
 }
 
 BMessage* MarkdownStyler::GetDetailForBlockType(MD_BLOCKTYPE type, void* detail) {
@@ -157,7 +180,7 @@ BMessage* MarkdownStyler::GetDetailForBlockType(MD_BLOCKTYPE type, void* detail)
             break;
         }
         default: {
-            printf("skipping unsupported block type %s.\n", block_type_name[type]);
+            printf("get detail: skipping unsupported block type %s.\n", block_type_name[type]);
         }
     }
 

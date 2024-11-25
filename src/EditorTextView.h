@@ -11,6 +11,10 @@
 #include "MarkdownStyler.h"
 #include "StatusBar.h"
 
+const rgb_color linkColor = ui_color(B_LINK_TEXT_COLOR);
+const rgb_color codeColor = ui_color(B_SHADOW_COLOR);
+const rgb_color textColor = ui_color(B_DOCUMENT_TEXT_COLOR);
+
 class EditorTextView : public BTextView {
 
 //todo move to separate file later
@@ -40,15 +44,15 @@ public:
 
 private:
     void            MarkupText(int32 start = 0, int32 end = -1);
-    void            StyleText(text_data* markupInfo);
-    void            CalcStyle(markup_stack* stack, BFont *font, rgb_color *color);
-    void            GetBlockStyle(MD_BLOCKTYPE blockType, BMessage *detail, BFont *font, rgb_color *color);
-    void            GetSpanStyle(MD_SPANTYPE spanType, BMessage *detail, BFont *font, rgb_color *color);
+    void            StyleText(text_data* markupInfo, BFont *font, rgb_color *color);
+    void            SetBlockStyle(MD_BLOCKTYPE blockType, BMessage* detail, BFont* font, rgb_color* color);
+    void            SetSpanStyle(MD_SPANTYPE spanType, BMessage* detail, BFont* font, rgb_color* color);
+    void            SetTextStyle(MD_TEXTTYPE textType, BFont *font, rgb_color *color);
     void            ClearTextInfo(int32 start, int32 end);
     BMessage*       GetOutlineAt(int32 offset, bool withNames = false);
-    markup_stack*   GetTextStackFrom(int32 offset, int32* blockEnd = NULL);
-    markup_stack*   GetTextStackTo(int32 offset, int32* blockStart = NULL);
-    markup_stack*   GetTextStackForBlockAt(int32 offset, int32* blockStart = NULL, int32* blockEnd = NULL);
+    markup_stack*   GetMarkupStackFrom(int32 offset, int32* blockEnd = NULL);
+    markup_stack*   GetMarkupStackTo(int32 offset, int32* blockStart = NULL);
+    markup_stack*   GetMarkupStackForBlockAt(int32 offset, int32* blockStart = NULL, int32* blockEnd = NULL);
 
     void            UpdateStatus();
 
