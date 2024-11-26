@@ -43,7 +43,7 @@ public:
                                const BMessage* dragMessage);
 
 private:
-    void            MarkupText(int32 start = 0, int32 end = -1);
+    void            MarkupText(int32 start, int32 end);
     void            StyleText(text_data* markupInfo, BFont *font, rgb_color *color);
     void            SetBlockStyle(MD_BLOCKTYPE blockType, BMessage* detail, BFont* font, rgb_color* color);
     void            SetSpanStyle(MD_SPANTYPE spanType, BMessage* detail, BFont* font, rgb_color* color);

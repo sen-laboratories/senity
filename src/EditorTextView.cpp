@@ -78,7 +78,7 @@ void EditorTextView::MouseDown(BPoint where) {
         // highlight block
         int32 begin, end;
         fMarkdownParser->GetMarkupBoundariesAt(OffsetAt(where), BLOCK, &begin, &end);
-        if (begin > 0 && end > 0) {
+        if (begin >= 0 && end > 0) {
             Clear();
             Highlight(begin, end);
             Draw(TextRect());   // bug in TextView not updating highlight correctly
@@ -153,27 +153,30 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
         return;
     }
     int32 blockStart, blockEnd;
-    if (end == -1) {
-        end = TextLength();
-    } else {
-        // extend to block offsets for start and end so markup can be determined and styled correctly
-        // since we have 2 possibly overlapping boundaries for block around start and end offset from edit,
-        // we need to use temp vars here and just take the first start boundary and the last end boundary.
-        int32 from, to;
+    // extend to block offsets for start and end so markup can be determined and styled correctly
+    // since we have 2 possibly overlapping boundaries for block around start and end offset from edit,
+    // we need to use temp vars here and just take the first start boundary and the last end boundary.
+    int32 from, to;
+    if (start > 0) {
         fMarkdownParser->GetMarkupBoundariesAt(start, BLOCK, &from, &to);
         if (from == -1)
             from = 0;
         blockStart = from;
-
+    } else {
+        blockStart = 0;
+    }
+    if (end < TextLength()) {
         fMarkdownParser->GetMarkupBoundariesAt(end, BLOCK, &from, &to);
         if (to == -1)
             to = TextLength();
         blockEnd = to;
+    } else {
+        blockEnd = TextLength();
     }
     int32 size = blockEnd - blockStart;
+
     printf("markup text %d - %d\n", blockStart, blockEnd);
     // clear the map section affected by the parser update
-    // todo: this method determines block ranges again, optimize!
     fMarkdownParser->ClearTextInfo(start, end);
 
     char text[size + 1];
@@ -213,11 +216,13 @@ void EditorTextView::StyleText(text_data* markupData, BFont *font, rgb_color *co
         }
         case MD_SPAN_END: {
             // todo: handle a stack of text styles/run arrays for generic reset!
+            // e.g. maintain a temp BFont+color stack
             break;
         }
         case MD_BLOCK_END: {
-            *font  = *be_plain_font;
-            *color = textColor;
+            // todo: probably nothing to do here as per MD4C docs
+            //*font  = *be_plain_font;
+            //*color = textColor;
             break;
         }
         case MD_TEXT: {
@@ -232,6 +237,11 @@ void EditorTextView::StyleText(text_data* markupData, BFont *font, rgb_color *co
             start, end,
             MarkdownParser::GetMarkupClassName(markupData->markup_class),
             typeInfo, font->Face(), color->red, color->green, color->blue);
+
+            // reset to defaults for next run
+            *font  = *be_plain_font;
+            *color = textColor;
+
             break;
         }
         // todo handle nested blocks and spans as described in

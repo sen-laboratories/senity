@@ -61,12 +61,11 @@ void MarkdownParser::ClearTextInfo(int32 start, int32 end) {
         return;
     }
 
-    // clear individual elements first...
-    for (auto stackItem : *fTextLookupMap) {
-        int32 offset = stackItem.first;
+    for (auto mapItem : *fTextLookupMap) {
+        int32 offset = mapItem.first;
         if (offset >= start && offset <= end) {
-            stackItem.second->clear();
-            fTextLookupMap->erase(stackItem.first);
+            mapItem.second->clear();                // first clear stack
+            fTextLookupMap->erase(mapItem.first);   // then remove map item
         }
     }
 }
@@ -80,53 +79,23 @@ int MarkdownParser::Parse(char* text, int32 size) {
 markup_stack* MarkdownParser::GetMarkupStackAt(int32 offset, MD_CLASS markupType, int32* mapOffsetFound) {
     // search markup stack for nearest offset in search direction
     printf("searching nearest markup info stack for offset %d...\n", offset);
-    auto markupStack = fTextLookupMap->lower_bound(offset);
     markup_stack* closestStack;
 
-    std::map<int32, markup_stack*>::iterator low, prev;
+    std::map<int32, markup_stack*>::iterator low;
     low = fTextLookupMap->lower_bound(offset);
 
-    // see https://stackoverflow.com/a/28405093/160799
-    if (low == fTextLookupMap->end()) {
-        printf("nothing found at %d\n", offset);
-        return NULL;
-    } else if (low == fTextLookupMap->begin()) {
-        std::cout << "low=" << low->first << '\n';
-        closestStack = low->second;
-        if (mapOffsetFound != NULL)
-            *mapOffsetFound = low->first;
+    if (low == fTextLookupMap->begin()) {
+        std::cout << "reached start, low=0" << low->first << '\n';
     } else {
-        prev = std::prev(low);
-        if ((offset - prev->first) < (low->first - offset)) {
-            std::cout << "prev=" << prev->first << '\n';
-            closestStack = prev->second;
-             if (mapOffsetFound != NULL)
-                *mapOffsetFound = prev->first;
-       }
-        else {
-            std::cout << "low=" << low->first << '\n';
-            closestStack = low->second;
-            if (mapOffsetFound != NULL)
-                *mapOffsetFound = low->first;
-        }
+        low = std::prev(low);
     }
+    if (mapOffsetFound != NULL) {
+        *mapOffsetFound = low->first;
+        printf("found stack at nearest lower offset %d for offset %d\n", *mapOffsetFound, offset);
+    }
+    closestStack = low->second;
 
     return closestStack;
-
-    /* todo: filter for desired type
-    // determine search direction
-    switch (markupType) {
-        case MD_BLOCK_BEGIN:
-        case MD_SPAN_BEGIN:    // all fallthrough to searching "backward" from offset towards text start
-            break;
-        default:
-    }
-
-    markup_stack *stack = new markup_stack;
-    stack->markup_stack = new std::vector<text_data*>;
-
-    return stack;
-    */
 }
 
 void MarkdownParser::GetMarkupBoundariesAt(int32 offset, BOUNDARY_TYPE boundaryType, int32* start, int32* end) {
@@ -180,11 +149,6 @@ void MarkdownParser::GetMarkupBoundariesAt(int32 offset, BOUNDARY_TYPE boundaryT
 
 int MarkdownParser::EnterBlock(MD_BLOCKTYPE type, MD_OFFSET offset, void* detail, void* userdata)
 {
-    // ignore document block, not needed and may only cause problems with offset map, esp. on block leave (para+doc)
-    if (type == MD_BLOCK_DOC) {
-        printf("EnterBlock ignoring type %s, offset: %u\n", block_type_name[type], offset);
-        return 0;
-    }
     printf("EnterBlock type %s, offset: %u, detail:\n", block_type_name[type], offset);
     BMessage *detailMsg = GetDetailForBlockType(type, detail);
 
@@ -265,9 +229,11 @@ void MarkdownParser::AddMarkupMetadata(MD_CLASS markupClass, MD_SPANTYPE spanTyp
  */
 void MarkdownParser::AddMarkupMetadata(text_data *data, MD_OFFSET offset, void* userdata)
 {
-    auto lookupMap = reinterpret_cast<text_lookup*>(userdata);
+    data->offset = offset;
 
+    auto lookupMap = reinterpret_cast<text_lookup*>(userdata);
     auto lookupMapIter = lookupMap->find(offset);
+
     if (lookupMapIter == lookupMap->end()) {
         // add stack elemet to new map
         markup_stack* stack = new markup_stack;
