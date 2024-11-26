@@ -8,7 +8,7 @@
 #include <SupportDefs.h>
 #include <TextView.h>
 
-#include "MarkdownStyler.h"
+#include "MarkdownParser.h"
 #include "StatusBar.h"
 
 const rgb_color linkColor = ui_color(B_LINK_TEXT_COLOR);
@@ -48,18 +48,12 @@ private:
     void            SetBlockStyle(MD_BLOCKTYPE blockType, BMessage* detail, BFont* font, rgb_color* color);
     void            SetSpanStyle(MD_SPANTYPE spanType, BMessage* detail, BFont* font, rgb_color* color);
     void            SetTextStyle(MD_TEXTTYPE textType, BFont *font, rgb_color *color);
-    void            ClearTextInfo(int32 start, int32 end);
     BMessage*       GetOutlineAt(int32 offset, bool withNames = false);
-    markup_stack*   GetMarkupStackFrom(int32 offset, int32* blockEnd = NULL);
-    markup_stack*   GetMarkupStackTo(int32 offset, int32* blockStart = NULL);
-    markup_stack*   GetMarkupStackForBlockAt(int32 offset, int32* blockStart = NULL, int32* blockEnd = NULL);
-
     void            UpdateStatus();
 
     BMessenger*     fMessenger;
     StatusBar*      fStatusBar;
-    MarkdownStyler* fMarkdownStyler;
+    MarkdownParser* fMarkdownParser;
     BFont*          fLinkFont;
     BFont*          fCodeFont;
-    text_info*      fTextInfo;
 };

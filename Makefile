@@ -31,7 +31,7 @@ APP_MIME_SIG = application/x-vnd.senlabs-senity
 #	Also note that spaces in folder names do not work well with this Makefile.
 SRCS =  src/App.cpp \
         src/MainWindow.cpp \
-        src/MarkdownStyler.cpp \
+        src/MarkdownParser.cpp \
         src/EditorView.cpp \
         src/EditorTextView.cpp \
         src/StatusBar.cpp
