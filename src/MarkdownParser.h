@@ -43,7 +43,7 @@ typedef struct text_data {
     uint            length;
 } text_data;
 
-// for keeping markup info from parsing in a simple to iterate format
+// used as temporary processing buffer for styling
 typedef struct std::vector<text_data*>        markup_stack;
 
 typedef struct std::map<int32, markup_stack*> text_lookup;

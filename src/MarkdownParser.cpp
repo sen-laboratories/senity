@@ -84,9 +84,8 @@ markup_stack* MarkdownParser::GetMarkupStackAt(int32 offset, MD_CLASS markupType
     std::map<int32, markup_stack*>::iterator low;
     low = fTextLookupMap->lower_bound(offset);
 
-    if (low == fTextLookupMap->begin()) {
-        std::cout << "reached start, low=0" << low->first << '\n';
-    } else {
+    // not first offset but found element
+    if (low != fTextLookupMap->begin() && low != fTextLookupMap->end()) {
         low = std::prev(low);
     }
     if (mapOffsetFound != NULL) {
