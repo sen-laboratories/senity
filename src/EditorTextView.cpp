@@ -74,14 +74,16 @@ void EditorTextView::KeyDown(const char* bytes, int32 numBytes) {
 
 void EditorTextView::MouseDown(BPoint where) {
     BTextView::MouseDown(where);
+    int32 offset = OffsetAt(where);
     if ((modifiers() & B_COMMAND_KEY) != 0) {
         // highlight block
         int32 begin, end;
-        fMarkdownParser->GetMarkupBoundariesAt(OffsetAt(where), BLOCK, &begin, &end);
+        fMarkdownParser->GetMarkupRangeAt(offset, &begin, &end);
         if (begin >= 0 && end > 0) {
-            Clear();
             Highlight(begin, end);
             Draw(TextRect());   // bug in TextView not updating highlight correctly
+        } else {
+            printf("got no boundaries for offset %d!\n", offset);
         }
     }
     UpdateStatus();
@@ -104,7 +106,7 @@ void EditorTextView::UpdateStatus() {
 }
 
 BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames) {
-    markup_stack *markupStack = fMarkdownParser->GetMarkupStackAt(offset, MD_BLOCK_BEGIN);
+    markup_stack *markupStack = fMarkdownParser->GetMarkupRangeAt(offset, NULL, NULL, BLOCK, BEGIN, true, true, true);
     BMessage *outlineMsg = new BMessage('Tout');
 
     for (auto item : *markupStack) {
@@ -158,17 +160,13 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
     // we need to use temp vars here and just take the first start boundary and the last end boundary.
     int32 from, to;
     if (start > 0) {
-        fMarkdownParser->GetMarkupBoundariesAt(start, BLOCK, &from, &to);
-        if (from == -1)
-            from = 0;
+        fMarkdownParser->GetMarkupRangeAt(start, &from, &to);
         blockStart = from;
     } else {
         blockStart = 0;
     }
     if (end < TextLength()) {
-        fMarkdownParser->GetMarkupBoundariesAt(end, BLOCK, &from, &to);
-        if (to == -1)
-            to = TextLength();
+        fMarkdownParser->GetMarkupRangeAt(end, &from, &to, BLOCK, END);
         blockEnd = to;
     } else {
         blockEnd = TextLength();
@@ -192,7 +190,7 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
 
     // process all text map items in the parsed text
     // TODO: correctly handle sub ranges on restyle!
-    for (auto info : *(fMarkdownParser->GetTextLookupMap())) {
+    for (auto info : *(fMarkdownParser->GetMarkupMap())) {
         // process all markup stack items at this map offset
         for (auto stackItem : *info.second) {
             StyleText(stackItem, &font, &color);
