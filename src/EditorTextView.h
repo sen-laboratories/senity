@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <stack>
 #include <SupportDefs.h>
 #include <TextView.h>
 
@@ -44,7 +45,8 @@ public:
 
 private:
     void            MarkupText(int32 start, int32 end);
-    void            StyleText(text_data* markupInfo, BFont *font, rgb_color *color);
+    void            StyleText(text_data* markupInfo, std::stack<text_data*> *blockStyles,
+                                                     std::stack<text_data*> *stackStyles);
     void            SetBlockStyle(MD_BLOCKTYPE blockType, BMessage* detail, BFont* font, rgb_color* color);
     void            SetSpanStyle(MD_SPANTYPE spanType, BMessage* detail, BFont* font, rgb_color* color);
     void            SetTextStyle(MD_TEXTTYPE textType, BFont *font, rgb_color *color);

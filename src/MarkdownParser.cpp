@@ -140,6 +140,7 @@ markup_stack* MarkdownParser::GetMarkupRangeAt(int32 offset, int32* start, int32
 
                 if (stackItem->markup_class == classToSearch) {
                     if (returnStack && filterStack) {   // add only stack elements matching the search criteria
+                        // todo: only insert if no similar element is not already in stack, refactor into separate func
                         resultStack->push_back(stackItem);
                     }
                     startPos = mapIter->first;
@@ -147,10 +148,10 @@ markup_stack* MarkdownParser::GetMarkupRangeAt(int32 offset, int32* start, int32
                     printf("markup START boundary search: found markup class %s at offset %d\n",
                             GetMarkupClassName(classToSearch), startPos);
 
-                    if (!followToRoot) { // else we go through all elements until we reach the top level
+                    if (! followToRoot) { // else we go through remaining map stack elements until we reach the top level
                         search = false;
-                        break;
                     }
+                    break;
                 }
             }
             // not found at stack at this map offset (or followToRoot is true), continue
@@ -187,10 +188,10 @@ markup_stack* MarkdownParser::GetMarkupRangeAt(int32 offset, int32* start, int32
                     printf("markup END boundary search: found markup class %s at offset %d\n",
                             GetMarkupClassName(classToSearch), endPos);
 
-                    if (!followToRoot) { // else we go through all elements until we reach the top level
+                    if (! followToRoot) { // else we go through remaining map stack elements until we reach the top level
                         search = false;
-                        break;
                     }
+                    break;
                 }
             }
         }

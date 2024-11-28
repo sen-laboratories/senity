@@ -3,7 +3,9 @@
  * All rights reserved. Distributed under the terms of the MIT license.
  */
 
+#include <assert.h>
 #include <Messenger.h>
+#include <stack>
 #include <stdio.h>
 
 #include "EditorTextView.h"
@@ -185,68 +187,92 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
 
     printf("\n*** parsing finished, now styling... ***\n");
 
-    BFont       font;
-    rgb_color   color(textColor);
+    // caching of active styles as detected by block/span ranges
+    // push on BLOCK/SPAN_BEGIN, apply on TEXT, pop on BLOCK/SPAN END
+    // see https://github.com/mity/md4c/wiki/Embedding-Parser%3A-Calling-MD4C#typical-implementation
+    std::stack<text_data*> *blockStyles = new std::stack<text_data*>();
+    std::stack<text_data*> *spanStyles = new std::stack<text_data*>();
 
     // process all text map items in the parsed text
-    // TODO: correctly handle sub ranges on restyle!
     for (auto info : *(fMarkdownParser->GetMarkupMap())) {
         // process all markup stack items at this map offset
         for (auto stackItem : *info.second) {
-            StyleText(stackItem, &font, &color);
+            StyleText(stackItem, blockStyles, spanStyles);
         }
     }
+    delete blockStyles;
+    delete spanStyles;
 }
 
-void EditorTextView::StyleText(text_data* markupData, BFont *font, rgb_color *color) {
+void EditorTextView::StyleText(text_data* markupData,
+                                std::stack<text_data*> *blockStyles, std::stack<text_data*> *spanStyles) {
     const char *typeInfo;
 
     switch (markupData->markup_class) {
         case MD_BLOCK_BEGIN: {
-            SetBlockStyle(markupData->markup_type.block_type, markupData->detail, font, color);
-            typeInfo = MarkdownParser::GetBlockTypeName(markupData->markup_type.block_type);
-            break;
-        }
-        case MD_SPAN_BEGIN: {
-            SetSpanStyle(markupData->markup_type.span_type, markupData->detail, font, color);
-            typeInfo = MarkdownParser::GetSpanTypeName(markupData->markup_type.span_type);
-            break;
-        }
-        case MD_SPAN_END: {
-            // todo: handle a stack of text styles/run arrays for generic reset!
-            // e.g. maintain a temp BFont+color stack
+            blockStyles->push(markupData);
+
+            printf("StyleText: got block type %s\n",
+                    MarkdownParser::GetBlockTypeName(blockStyles->top()->markup_type.block_type));
+
             break;
         }
         case MD_BLOCK_END: {
-            // todo: probably nothing to do here as per MD4C docs
-            //*font  = *be_plain_font;
-            //*color = textColor;
+            typeInfo = MarkdownParser::GetBlockTypeName(blockStyles->top()->markup_type.block_type);
+            printf("pop block stack element at block_end: %s\n", typeInfo);
+
+            blockStyles->pop();
+            break;
+        }
+        case MD_SPAN_BEGIN: {
+            spanStyles->push(markupData);
+
+            printf("StyleText: got span type %s\n",
+                    MarkdownParser::GetSpanTypeName(spanStyles->top()->markup_type.span_type));
+            break;
+        }
+        case MD_SPAN_END: {
+            typeInfo = MarkdownParser::GetSpanTypeName(spanStyles->top()->markup_type.span_type);
+            printf("pop stack stack element at span_end: %s\n", typeInfo);
+
+            spanStyles->pop();
             break;
         }
         case MD_TEXT: {
-            SetTextStyle(markupData->markup_type.text_type, font, color);
-            typeInfo      = MarkdownParser::GetTextTypeName(markupData->markup_type.text_type);
-
             int32 start   = markupData->offset;
             int32 end     = start + markupData->length;
-            SetFontAndColor(start, end, font, B_FONT_FAMILY_AND_STYLE, color);
-            // debug
-            printf("StyleText @%d - %d: calculated style for class %s, type %s: font face %d, color rgb %d, %d, %d\n",
-            start, end,
-            MarkdownParser::GetMarkupClassName(markupData->markup_class),
-            typeInfo, font->Face(), color->red, color->green, color->blue);
+            BFont font(be_plain_font);
+            rgb_color color = textColor;
 
-            // reset to defaults for next run
-            *font  = *be_plain_font;
-            *color = textColor;
+            printf("StyleText: got TEXT type %s\n", MarkdownParser::GetTextTypeName(markupData->markup_type.text_type));
+
+            if (! spanStyles->empty()) {
+                text_data *spanStyle  = spanStyles->top();
+                printf("StyleText @%d - %d: got span style %s\n", start, end,
+                    MarkdownParser::GetSpanTypeName(spanStyle->markup_type.span_type));
+
+                SetSpanStyle(spanStyle->markup_type.span_type, spanStyle->detail, &font, &color);
+            }
+            if (! blockStyles->empty()) {
+                text_data *blockStyle = blockStyles->top();
+                printf("StyleText @%d - %d: got block style %s\n", start, end,
+                    MarkdownParser::GetBlockTypeName(blockStyle->markup_type.block_type));
+
+                SetBlockStyle(blockStyle->markup_type.block_type, blockStyle->detail, &font, &color);
+            }
+
+            SetTextStyle(markupData->markup_type.text_type, &font, &color);
+            SetFontAndColor(start, end, &font, B_FONT_FAMILY_AND_STYLE, &color);
+
+            typeInfo = MarkdownParser::GetTextTypeName(markupData->markup_type.text_type);
+            printf("StyleText @%d - %d: calculated style for class %s, type %s: font face %d, color rgb %d, %d, %d\n",
+                start, end,
+                MarkdownParser::GetMarkupClassName(markupData->markup_class),
+                typeInfo, font.Face(), color.red, color.green, color.blue);
 
             break;
         }
-        // todo handle nested blocks and spans as described in
-        // https://github.com/mity/md4c/wiki/Embedding-Parser%3A-Calling-MD4C#typical-implementation
         default:    // block/span end
-            //*font  = *be_plain_font;
-            //*color = textColor;
             break;
     }
 }
