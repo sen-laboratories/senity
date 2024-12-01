@@ -5,16 +5,22 @@
 
 #include <assert.h>
 #include <Messenger.h>
+#include <ScrollView.h>
 #include <stack>
 #include <stdio.h>
 
 #include "EditorTextView.h"
 
-EditorTextView::EditorTextView(BRect viewFrame, BRect textBounds, StatusBar *statusBar, BHandler *editorHandler)
-: BTextView(viewFrame, "textview", textBounds, B_FOLLOW_ALL, B_FRAME_EVENTS | B_WILL_DRAW)
+EditorTextView::EditorTextView(StatusBar *statusBar, BHandler *editorHandler)
+: BTextView("editor_text_view")
 {
 	SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
 	SetLowUIColor(ViewUIColor());
+
+    SetStylable(true);
+    SetDoesUndo(true);
+    SetWordWrap(false);
+    SetFontAndColor(be_plain_font);
 
     fStatusBar = statusBar;
     fMessenger = new BMessenger(editorHandler);
@@ -36,22 +42,15 @@ EditorTextView::~EditorTextView() {
     delete fMessenger;
 }
 
-void EditorTextView::AttachedToWindow() {
-    BTextView::AttachedToWindow();
-    DoLayout();
-}
-
 void EditorTextView::SetText(const char* text, const text_run_array* runs) {
     BTextView::SetText(text, runs);
     MarkupText(0, TextLength());
-    DoLayout();
     UpdateStatus();
 }
 
 void EditorTextView::SetText(BFile* file, int32 offset, size_t size) {
     BTextView::SetText(file, offset, size);
     MarkupText(offset, TextLength());
-    DoLayout();
     UpdateStatus();
 }
 
@@ -59,6 +58,7 @@ void EditorTextView::SetText(BFile* file, int32 offset, size_t size) {
 void EditorTextView::DeleteText(int32 start, int32 finish) {
     BTextView::DeleteText(start, finish);
     MarkupText(start, finish);
+    UpdateStatus();
 }
 
 void EditorTextView::InsertText(const char* text, int32 length, int32 offset,
@@ -66,6 +66,7 @@ void EditorTextView::InsertText(const char* text, int32 length, int32 offset,
 {
     BTextView::InsertText(text, length, offset, runs);
     MarkupText(offset, offset + length);
+    UpdateStatus();
 }
 
 void EditorTextView::KeyDown(const char* bytes, int32 numBytes) {
@@ -109,7 +110,13 @@ void EditorTextView::UpdateStatus() {
 
 BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames) {
     markup_stack *markupStack = fMarkdownParser->GetMarkupRangeAt(offset, NULL, NULL, BLOCK, BEGIN, true, true, true);
+
     BMessage *outlineMsg = new BMessage('Tout');
+
+    if (markupStack == NULL) {
+        printf("no outline at offset %d\n", offset);
+        return outlineMsg;
+    }
 
     for (auto item : *markupStack) {
         switch (item->markup_class) {

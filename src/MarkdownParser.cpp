@@ -22,12 +22,6 @@ const char* MarkdownParser::GetSpanTypeName(MD_SPANTYPE type)   { return span_ty
 const char* MarkdownParser::GetTextTypeName(MD_TEXTTYPE type)   { return text_type_name[type];  }
 const char* MarkdownParser::GetMarkupClassName(MD_CLASS type)   { return markup_class_name[type];  }
 
-const char* MarkdownParser::attr_to_str(MD_ATTRIBUTE data) {
-    if (data.text == NULL || data.size == 0) return "";
-    printf("attr_to_str got text %s with length %u\n", data.text, data.size);
-    return (new BString(data.text, data.size))->String();
-}
-
 MarkdownParser::MarkdownParser()
     : fParser(new MD_PARSER) {
 
@@ -45,6 +39,10 @@ std::map<int32, markup_stack*>* MarkdownParser::GetMarkupMap() {
     return fTextLookup->markupMap;
 }
 
+/*
+ * we need a separate Init() function since these methods are not yet
+ * available for wiring when the class is being constructed.
+ */
 void MarkdownParser::Init() {
     fParser->abi_version = 0;
     fParser->syntax = 0;
@@ -122,7 +120,13 @@ markup_stack* MarkdownParser::GetMarkupRangeAt(int32 offset, int32* start, int32
     }
 
     auto mapIter = fTextLookup->markupMap->find(searchOffset);
-    assert(mapIter != fTextLookup->markupMap->cend());
+    if (mapIter == fTextLookup->markupMap->cend()) {
+        if (start != NULL)
+            *start = -1;
+        if (end!= NULL)
+            *end= -1;
+        return NULL;
+    }
 
     int32 startPos = 0;
     bool  search = true;
@@ -365,4 +369,13 @@ BMessage* MarkdownParser::GetDetailForSpanType(MD_SPANTYPE type, void* detail) {
 void MarkdownParser::LogDebug(const char* msg, void* userdata)
 {
     printf("\e[32m[\e[34mmd4c\e[32m]\e[0m %s\n", msg);
+}
+
+/*
+ * helper function to null-terminate strings from parser
+ */
+const char* MarkdownParser::attr_to_str(MD_ATTRIBUTE data) {
+    if (data.text == NULL || data.size == 0) return "";
+    printf("attr_to_str got text %s with length %u\n", data.text, data.size);
+    return (new BString(data.text, data.size))->String();
 }

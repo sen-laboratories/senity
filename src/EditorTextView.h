@@ -26,10 +26,8 @@ enum message_codes {
 #define TEXTVIEW_POSITION_UPDATED_OFFSET = "offset";
 
 public:
-                    EditorTextView(BRect viewFrame, BRect textBounds, StatusBar *statusView, BHandler *editorHandler);
+                    EditorTextView(StatusBar *statusView, BHandler *editorHandler);
     virtual         ~EditorTextView();
-
-    virtual void    AttachedToWindow();
 
     virtual void    SetText(BFile *file, int32 offset, size_t size);
     virtual void    SetText(const char* text, const text_run_array* runs = NULL);

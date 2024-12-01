@@ -15,12 +15,11 @@
 class EditorView : public BView {
 
 public:
-                EditorView();
-    virtual     ~EditorView();
-    void        SetText(BFile *file, size_t size);
+                    EditorView();
+    virtual         ~EditorView();
+    void            SetText(BFile *file, size_t size);
 
 private:
-
     EditorTextView* fTextView;
     BScrollView*	fScrollView;
     StatusBar*      fStatusBar;

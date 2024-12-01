@@ -9,38 +9,24 @@
 
 #include "EditorView.h"
 
-EditorView::EditorView() : BView("editor_view", B_WILL_DRAW | B_PULSE_NEEDED) {
-    SetLayout(new BGroupLayout(B_VERTICAL, 0));
+EditorView::EditorView() : BView("editor_view", B_WILL_DRAW | B_PULSE_NEEDED | B_FRAME_EVENTS) {
 
     fStatusBar = new StatusBar();
+    fTextView = new EditorTextView(fStatusBar, this);
+    fScrollView = new BScrollView("editorScrollview", fTextView, B_WILL_DRAW, true, true);
 
-	BRect viewFrame = Bounds();
-	BRect textBounds = viewFrame;
-	textBounds.OffsetTo(B_ORIGIN);
-
-    fTextView = new EditorTextView(viewFrame, textBounds, fStatusBar, this);
-    fTextView->SetStylable(true);
-    fTextView->SetDoesUndo(true);
-    fTextView->SetWordWrap(false);
-    fTextView->SetFontAndColor(be_plain_font);
-    // this forces a relayout and avoids a grey border to the right
-    fTextView->SetText("# Welcome to SENity!\n\n## Getting Started\n\na **new** `/home` for *your* ~~thoughts~~.\n");
-
-    fScrollView = new BScrollView("scrollview", fTextView, B_FOLLOW_ALL, 0, true, true);
-
-    BLayoutBuilder::Group<>((BGroupLayout*)GetLayout())
+    BLayoutBuilder::Group<>(this, B_VERTICAL, 0.0)
+		.SetInsets(0.0)
         .Add(fScrollView)
         .Add(fStatusBar)
-        .End();
+    .End();
 }
 
 EditorView::~EditorView() {
     RemoveSelf();
-    delete fStatusBar;
-    delete fScrollView;
 }
 
 void EditorView::SetText(BFile* file, size_t size) {
-    printf("set text to file with size %zu\n", size);
+    fScrollView->SetExplicitMaxSize(BSize(fScrollView->Bounds().Width(), fScrollView->Bounds().Height()));
     fTextView->SetText(file, 0, size);
 }

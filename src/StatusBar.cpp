@@ -9,7 +9,7 @@
 
 #include "StatusBar.h"
 
-StatusBar::StatusBar() : BView("status_bar", B_HORIZONTAL | B_WILL_DRAW | B_PULSE_NEEDED) {
+StatusBar::StatusBar() : BView("status_bar", B_HORIZONTAL | B_WILL_DRAW | B_SUPPORTS_LAYOUT | B_PULSE_NEEDED) {
     fLine = new BTextControl("line", "-", new BMessage('line'));
     fColumn = new BTextControl("column", "-", new BMessage('clmn'));
     fOffset = new BTextControl("offset", "-", new BMessage('offs'));
@@ -21,15 +21,14 @@ StatusBar::StatusBar() : BView("status_bar", B_HORIZONTAL | B_WILL_DRAW | B_PULS
     fOutline->SetEnabled(false);
     fOutline->SetExplicitMinSize(BSize(180.0, be_plain_font->Size()));
 
-    SetLayout(new BGroupLayout(B_HORIZONTAL, 0));
-	BLayoutBuilder::Group<>((BGroupLayout*)GetLayout())
+	BLayoutBuilder::Group<>(this, B_HORIZONTAL, 0)
 		.Add(fLine)
         .Add(fColumn)
         .Add(fOffset)
         .Add(fSelection)
         .Add(fOutline)
         .AddGlue(1.0)
-		.End();
+		.Layout();  //todo: do we need to store this layot?
 
     UpdatePosition(0, 1, 0);
     UpdateSelection(0, 0);
@@ -52,12 +51,11 @@ void StatusBar::UpdatePosition(int32 offset, int32 line, int32 column) {
 void StatusBar::UpdateSelection(int32 selectionStart, int32 selectionEnd) {
     BString selection;
     if (selectionStart != selectionEnd) {
-        selection << selectionStart << " - " << selectionEnd;
+        selection << selectionStart << " - " << selectionEnd
+                  << " (" << (selectionEnd - selectionStart) << " chars)";
     } else {
         selection << "-";
     }
-    selection << "(" << (selectionEnd - selectionStart) << " chars)";
-
     fSelection->SetText(selection.String());
 }
 

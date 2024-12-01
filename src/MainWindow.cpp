@@ -28,16 +28,17 @@ static const char* kSettingsFile = "senity_settings";
 
 MainWindow::MainWindow()
 	:
-	BWindow(BRect(100.0, 100.0, 260.0, 520.0), B_TRANSLATE("New Note"), B_DOCUMENT_WINDOW,
-		B_ASYNCHRONOUS_CONTROLS |/* B_AUTO_UPDATE_SIZE_LIMITS | */B_QUIT_ON_WINDOW_CLOSE)
+	BWindow(BRect(100.0, 100.0, 260.0, 480.0), B_TRANSLATE("New Note"), B_DOCUMENT_WINDOW,
+		B_ASYNCHRONOUS_CONTROLS | B_QUIT_ON_WINDOW_CLOSE)
 {
-    SetLayout(new BGroupLayout(B_VERTICAL, 0));
-
 	BMenuBar* menuBar = _BuildMenu();
     fEditorView = new EditorView();
 
-	AddChild(menuBar);
-    AddChild(fEditorView);
+    BLayoutBuilder::Group<>(this, B_VERTICAL, 0.0)
+		.SetInsets(0.0)
+        .Add(menuBar)
+        .Add(fEditorView)
+    .End();
 
 	BMessenger messenger(this);
 	fOpenPanel = new BFilePanel(B_OPEN_PANEL, &messenger, NULL, B_FILE_NODE, false);
@@ -49,14 +50,13 @@ MainWindow::MainWindow()
 	BRect frame;
 	if (settings.FindRect("main_window_rect", &frame) == B_OK) {
 		MoveTo(frame.LeftTop());
-		ResizeTo(frame.Width(), Bounds().Height());
+		ResizeTo(frame.Width(), frame.Height());
         MoveOnScreen();
 	} else {
-        ResizeTo(320.0, 540.0);
+        ResizeTo(320.0, 480.0);
         CenterOnScreen();
     }
 }
-
 
 MainWindow::~MainWindow()
 {
@@ -66,7 +66,6 @@ MainWindow::~MainWindow()
 	delete fSavePanel;
     delete fEditorView;
 }
-
 
 void
 MainWindow::MessageReceived(BMessage* message)
