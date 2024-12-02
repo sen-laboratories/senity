@@ -23,7 +23,7 @@ enum message_codes {
     TEXTVIEW_POSITION_UPDATED = 'Tpos'
 };
 
-#define TEXTVIEW_POSITION_UPDATED_OFFSET = "offset";
+#define TEXTVIEW_OFFSET = "offset";
 
 public:
                     EditorTextView(StatusBar *statusView, BHandler *editorHandler);
