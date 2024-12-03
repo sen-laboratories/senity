@@ -60,17 +60,19 @@ void StatusBar::UpdateSelection(int32 selectionStart, int32 selectionEnd) {
 
 void StatusBar::UpdateOutline(const BMessage* outlineItems) {
     if (outlineItems == NULL || outlineItems->IsEmpty()) {
-    fOutline->SetText("");
         return;
     }
     BString outline;
-  /*  for (int i = 0; i < outlineItems->CountStrings(); i++) {
+    char  *key[B_ATTR_NAME_LENGTH];
+    int32 *count;
+    for (int i = 0; i < outlineItems->CountNames(B_STRING_TYPE); i++) {
         if (i > 0) {
-            outline << " > ";
+            outline << " " << OUTLINE_SEPARATOR << " ";
         }
-        outline << outlineItems->StringAt(i);
+        outlineItems->GetInfo(B_STRING_TYPE, i, key, NULL, count);
+        for (int j = 0; j < *count ; j++) {
+            outline << outlineItems->GetString(*key, i, "");
+        }
     }
     fOutline->SetText(outline.String());
-    */
 }
-

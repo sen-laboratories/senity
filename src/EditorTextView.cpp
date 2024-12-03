@@ -11,6 +11,8 @@
 
 #include "EditorTextView.h"
 
+using namespace std;
+
 EditorTextView::EditorTextView(StatusBar *statusBar, BHandler *editorHandler)
 : BTextView("editor_text_view")
 {
@@ -77,19 +79,40 @@ void EditorTextView::KeyDown(const char* bytes, int32 numBytes) {
 
 void EditorTextView::MouseDown(BPoint where) {
     BTextView::MouseDown(where);
+    UpdateStatus();
+    if (TextLength() == 0) return;
+
     int32 offset = OffsetAt(where);
     if ((modifiers() & B_COMMAND_KEY) != 0) {
         // highlight block
         int32 begin, end;
         fMarkdownParser->GetMarkupRangeAt(offset, &begin, &end);
         if (begin >= 0 && end > 0) {
+            printf("highlighting text from %d - %d\n", begin, end);
             Highlight(begin, end);
-            Draw(TextRect());   // bug in TextView not updating highlight correctly
+            // Draw(TextRect());   // bug in TextView not updating highlight correctly
         } else {
             printf("got no boundaries for offset %d!\n", offset);
         }
+    } else {
+        auto data = fMarkdownParser->GetMarkupStackAt(offset);
+        BString stack;
+        for (auto item : *data) {
+            stack << "@" << item->offset << ": " <<
+            MarkdownParser::GetMarkupClassName(item->markup_class) << " [" <<
+            (item->markup_class == MD_BLOCK_BEGIN || item->markup_class == MD_BLOCK_END ?
+                MarkdownParser::GetBlockTypeName(item->markup_type.block_type) :
+                    (item->markup_class == MD_SPAN_BEGIN || item->markup_class == MD_SPAN_END ?
+                        MarkdownParser::GetSpanTypeName(item->markup_type.span_type) :
+                            MarkdownParser::GetTextTypeName(item->markup_type.text_type)    // must be TEXT
+                    )
+            ) <<
+            "]";
+            if (item != *data->end())
+                stack << " | ";
+        }
+        printf("markup stack at offset %d (%zu items): %s\n", offset, data->size(), stack.String());
     }
-    UpdateStatus();
 }
 
 void EditorTextView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessage) {
@@ -100,16 +123,19 @@ void EditorTextView::UpdateStatus() {
     int32 start, end, line;
     GetSelection(&start, &end);
     line = CurrentLine();
+
     fStatusBar->UpdatePosition(end, CurrentLine(), end - OffsetAt(line));
     fStatusBar->UpdateSelection(start, end);
 
     // update outline in status from block / span info contained in text info stack
-    BMessage* outlineItems = GetOutlineAt(end, true);
-    //fStatusBar->UpdateOutline(outlineItems);
+    BMessage* outline = GetOutlineAt(end, true);
+    fStatusBar->UpdateOutline(outline);
 }
 
 BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames) {
-    markup_stack *markupStack = fMarkdownParser->GetMarkupRangeAt(offset, NULL, NULL, BLOCK, BEGIN, true, true, true);
+    int32 blockOffset;
+    markup_stack *markupStack = fMarkdownParser->GetMarkupRangeAt(
+                                offset, &blockOffset, NULL, BLOCK, BEGIN, true, true, true);
 
     BMessage *outlineMsg = new BMessage('Tout');
 

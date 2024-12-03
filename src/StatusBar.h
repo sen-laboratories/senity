@@ -9,6 +9,8 @@
 #include <SupportDefs.h>
 #include <TextControl.h>
 
+#define OUTLINE_SEPARATOR "\xE2\x86\x92"
+
 class StatusBar : public BView {
 
 public:
