@@ -9,7 +9,7 @@
 
 #include "StatusBar.h"
 
-StatusBar::StatusBar() : BView("status_bar", B_WILL_DRAW | B_SUPPORTS_LAYOUT | B_PULSE_NEEDED) {
+StatusBar::StatusBar() : BView("status_bar", 0) {
     fLine = new BTextControl("line", "-", new BMessage('line'));
     fColumn = new BTextControl("column", "-", new BMessage('clmn'));
     fOffset = new BTextControl("offset", "-", new BMessage('offs'));
@@ -27,10 +27,7 @@ StatusBar::StatusBar() : BView("status_bar", B_WILL_DRAW | B_SUPPORTS_LAYOUT | B
         .Add(fOffset)
         .Add(fSelection)
         .Add(fOutline)
-        .AddGlue(1.0)
-    .End();
-
-    SetExplicitAlignment(BAlignment(B_ALIGN_USE_FULL_WIDTH, B_ALIGN_BOTTOM));
+        .AddGlue(1.0);
 
     UpdatePosition(0, 1, 0);
     UpdateSelection(0, 0);

@@ -218,31 +218,24 @@ void EditorTextView::StyleText(text_data* markupData,
     switch (markupData->markup_class) {
         case MD_BLOCK_BEGIN: {
             blockStyles->push(markupData);
-
-            printf("StyleText: got block type %s\n",
-                    MarkdownParser::GetBlockTypeName(blockStyles->top()->markup_type.block_type));
-
+            printf("StyleText: got block type %s\n", MarkdownParser::GetBlockTypeName(markupData->markup_type.block_type));
             break;
         }
         case MD_BLOCK_END: {
-            typeInfo = MarkdownParser::GetBlockTypeName(blockStyles->top()->markup_type.block_type);
-            printf("pop block stack element at block_end: %s\n", typeInfo);
-
-            blockStyles->pop();
+            typeInfo = MarkdownParser::GetBlockTypeName(markupData->markup_type.block_type);
+            printf("StyleText: got block_end type: %s\n", typeInfo);
             break;
         }
         case MD_SPAN_BEGIN: {
             spanStyles->push(markupData);
 
-            printf("StyleText: got span type %s\n",
-                    MarkdownParser::GetSpanTypeName(spanStyles->top()->markup_type.span_type));
+            printf("StyleText: got span type %s\n",MarkdownParser::GetSpanTypeName(markupData->markup_type.span_type));
             break;
         }
         case MD_SPAN_END: {
-            typeInfo = MarkdownParser::GetSpanTypeName(spanStyles->top()->markup_type.span_type);
-            printf("pop stack stack element at span_end: %s\n", typeInfo);
+            typeInfo = MarkdownParser::GetSpanTypeName(markupData->markup_type.span_type);
+            printf("StyleText: got span_end type: %s\n", typeInfo);
 
-            spanStyles->pop();
             break;
         }
         case MD_TEXT: {
@@ -251,21 +244,22 @@ void EditorTextView::StyleText(text_data* markupData,
             BFont font(be_plain_font);
             rgb_color color = textColor;
 
-            printf("StyleText: got TEXT type %s\n", MarkdownParser::GetTextTypeName(markupData->markup_type.text_type));
-
-            if (! spanStyles->empty()) {
-                text_data *spanStyle  = spanStyles->top();
-                printf("StyleText @%d - %d: got span style %s\n", start, end,
-                    MarkdownParser::GetSpanTypeName(spanStyle->markup_type.span_type));
-
-                SetSpanStyle(spanStyle->markup_type.span_type, spanStyle->detail, &font, &color);
-            }
-            if (! blockStyles->empty()) {
+            while (! blockStyles->empty()) {
                 text_data *blockStyle = blockStyles->top();
-                printf("StyleText @%d - %d: got block style %s\n", start, end,
+                printf(">>StyleText @%d - %d: got block style %s\n", start, end,
                     MarkdownParser::GetBlockTypeName(blockStyle->markup_type.block_type));
 
                 SetBlockStyle(blockStyle->markup_type.block_type, blockStyle->detail, &font, &color);
+                blockStyles->pop();
+            }
+
+            while (! spanStyles->empty()) {
+                text_data *spanStyle  = spanStyles->top();
+                printf(">>StyleText @%d - %d: got span style %s\n", start, end,
+                    MarkdownParser::GetSpanTypeName(spanStyle->markup_type.span_type));
+
+                SetSpanStyle(spanStyle->markup_type.span_type, spanStyle->detail, &font, &color);
+                spanStyles->pop();
             }
 
             SetTextStyle(markupData->markup_type.text_type, &font, &color);
@@ -317,7 +311,7 @@ void EditorTextView::SetBlockStyle(MD_BLOCKTYPE blockType, BMessage *detail, BFo
             break;
         }
         case MD_BLOCK_P: {
-            *font = *be_plain_font;
+            font->SetFace(B_REGULAR_FACE);
             *color = textColor;
             break;
         }
@@ -335,6 +329,7 @@ void EditorTextView::SetSpanStyle(MD_SPANTYPE spanType, BMessage *detail, BFont 
     switch (spanType) {
         case MD_SPAN_A:
         case MD_SPAN_WIKILINK: {    // fallthrough
+            printf("SetSpanStyle: hyperlink\n");
             font->SetFace(B_UNDERSCORE_FACE);
             *color = linkColor;
             break;
@@ -345,6 +340,7 @@ void EditorTextView::SetSpanStyle(MD_SPANTYPE spanType, BMessage *detail, BFont 
             break;
         }
         case MD_SPAN_CODE: {
+            printf("SetSpanStyle: code\n");
             font->SetSpacing(B_FIXED_SPACING);
             *color = codeColor;
             break;
@@ -372,10 +368,14 @@ void EditorTextView::SetSpanStyle(MD_SPANTYPE spanType, BMessage *detail, BFont 
 
 void EditorTextView::SetTextStyle(MD_TEXTTYPE textType, BFont *font, rgb_color *color) {
     switch (textType) {
-        case MD_TEXT_CODE:              // same for now
-        case MD_TEXT_HTML: {
+        case MD_TEXT_CODE: {
             font->SetSpacing(B_FIXED_SPACING);
             *color = codeColor;
+            break;
+        }
+        case MD_TEXT_HTML: {
+            font->SetSpacing(B_FIXED_SPACING);
+            *color = linkColor;
             break;
         }
         default:

@@ -13,13 +13,17 @@ EditorView::EditorView() : BView("editor_view", B_WILL_DRAW | B_PULSE_NEEDED | B
 
     fStatusBar  = new StatusBar();
     fTextView   = new EditorTextView(fStatusBar, this);
-    fScrollView = new BScrollView("editorScrollview", fTextView, B_WILL_DRAW, true, true);
+    fScrollView = new BScrollView("editorScrollview", fTextView, 0, true, true);
 
-    BLayoutBuilder::Group<>(this, B_VERTICAL, 0.0)
+    auto layout = BLayoutBuilder::Group<>(this, B_VERTICAL, 0.0)
 		.SetInsets(0.0)
         .Add(fScrollView)
-        .Add(fStatusBar)
-    .End();
+        .Add(fStatusBar).Layout();
+
+    BSize min = fScrollView->MinSize();
+	BSize max = fScrollView->MaxSize();
+	fScrollView->SetExplicitMinSize(min);
+	fScrollView->SetExplicitMaxSize(max);
 }
 
 EditorView::~EditorView() {
@@ -27,21 +31,5 @@ EditorView::~EditorView() {
 }
 
 void EditorView::SetText(BFile* file, size_t size) {
-    BRect frame(fScrollView->Bounds());
     fTextView->SetText(file, 0, size);
-    // we need to adjust scrollbar ranges to keep the view layout in line
-    BRect textRect = fTextView->TextRect();
-
-	if (BScrollBar *scrollBar = fScrollView->ScrollBar(B_VERTICAL)) {
-        float proportion = frame.Height() / textRect.Height();
-		scrollBar->SetProportion(proportion);
-		scrollBar->SetRange(0, textRect.Height());
-        scrollBar->SetSteps(textRect.Height() / 8.0, textRect.Height() / 2.0);
-	}
-	if (BScrollBar *scrollBar = fScrollView->ScrollBar(B_HORIZONTAL)) {
-		scrollBar->SetProportion(frame.Width() / textRect.Width());
-		scrollBar->SetRange(0, textRect.Width());
-        scrollBar->SetSteps(textRect.Width() / 8.0, textRect.Height() / 2.0);
-	}
-    Relayout();
 }

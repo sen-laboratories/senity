@@ -37,8 +37,7 @@ MainWindow::MainWindow()
     BLayoutBuilder::Group<>(this, B_VERTICAL, 0.0)
 		.SetInsets(0.0)
         .Add(menuBar)
-        .Add(fEditorView)
-    .End();
+        .Add(fEditorView);
 
 	BMessenger messenger(this);
 	fOpenPanel = new BFilePanel(B_OPEN_PANEL, &messenger, NULL, B_FILE_NODE, false);
