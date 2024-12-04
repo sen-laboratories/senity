@@ -86,7 +86,7 @@ void EditorTextView::MouseDown(BPoint where) {
     if ((modifiers() & B_COMMAND_KEY) != 0) {
         // highlight block
         int32 begin, end;
-        fMarkdownParser->GetMarkupRangeAt(offset, &begin, &end);
+        fMarkdownParser->GetMarkupBoundariesAt(offset, &begin, &end);
         if (begin >= 0 && end > 0) {
             printf("highlighting text from %d - %d\n", begin, end);
             Highlight(begin, end);
@@ -128,14 +128,13 @@ void EditorTextView::UpdateStatus() {
     fStatusBar->UpdateSelection(start, end);
 
     // update outline in status from block / span info contained in text info stack
-    BMessage* outline = GetOutlineAt(end, true);
+    BMessage* outline = GetOutlineAt(start, true);
     fStatusBar->UpdateOutline(outline);
 }
 
 BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames) {
     int32 blockOffset;
-    markup_stack *markupStack = fMarkdownParser->GetMarkupRangeAt(
-                                offset, &blockOffset, NULL, BLOCK, BEGIN, true, true, true);
+    markup_stack *markupStack = fMarkdownParser->GetOutlineAt(offset);
 
     BMessage *outlineMsg = new BMessage('Tout');
 
@@ -195,13 +194,13 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
     // we need to use temp vars here and just take the first start boundary and the last end boundary.
     int32 from, to;
     if (start > 0) {
-        fMarkdownParser->GetMarkupRangeAt(start, &from, &to);
+        fMarkdownParser->GetMarkupBoundariesAt(start, &from, &to);
         blockStart = from;
     } else {
         blockStart = 0;
     }
     if (end < TextLength()) {
-        fMarkdownParser->GetMarkupRangeAt(end, &from, &to, BLOCK, END);
+        fMarkdownParser->GetMarkupBoundariesAt(end, &from, &to, BLOCK, END);
         blockEnd = to;
     } else {
         blockEnd = TextLength();

@@ -6,6 +6,7 @@
 #pragma once
 
 #include <GroupView.h>
+#include <StringView.h>
 #include <SupportDefs.h>
 #include <TextControl.h>
 
@@ -26,5 +27,5 @@ private:
     BTextControl *fOffset;
     BTextControl *fSelection;
     // detail info on text outline from markup parser
-    BTextControl *fOutline;
+    BStringView  *fOutline;
 };

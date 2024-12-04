@@ -85,16 +85,19 @@ public:
     int                 Parse(char* text, int32 size);
     map<int32, markup_stack*>* GetMarkupMap();
     /**
+     * returns the text metadata stack at or near the given offset and optionally returns the effective offset.
+     */
+    markup_stack*       GetMarkupStackAt(int32 offset, int32* mapOffsetFound = NULL);
+    /**
     * search for block or span boundaries to capture block/span markup info and collect them into text_data stack.
     */
-    markup_stack*       GetMarkupStackAt(int32 offset, int32* mapOffsetFound = NULL);
-    markup_stack*       GetMarkupRangeAt(int32 offset, int32* start, int32* end,
+    markup_stack*       GetMarkupBoundariesAt(int32 offset, int32* start, int32* end,
                                          BOUNDARY_TYPE boundaryType = BLOCK,
                                          SEARCH_DIRECTION searchType = BOTH,
                                          bool returnStack = false,
-                                         bool unique = false,
-                                         bool traverseToRoot = false);
+                                         bool unique = false);
 
+    markup_stack*       GetOutlineAt(int32 offset);
     static BMessage*    GetDetailForBlockType(MD_BLOCKTYPE type, void* detail);
     static BMessage*    GetDetailForSpanType(MD_SPANTYPE type, void* detail);
 
@@ -139,4 +142,5 @@ private:
 
     // helper
     static const char*  attr_to_str(MD_ATTRIBUTE data);
+    static bool         IsOutlineItem(text_data *data);
 };

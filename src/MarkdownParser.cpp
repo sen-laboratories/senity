@@ -106,11 +106,45 @@ markup_stack* MarkdownParser::GetMarkupStackAt(int32 offset, int32* mapOffsetFou
     return closestStack;
 }
 
+markup_stack* MarkdownParser::GetOutlineAt(int32 offset) {
+    int32 searchOffset = offset, foundOffset;
+    // first, trace begin of current span
+    markup_stack* stack = GetMarkupBoundariesAt(searchOffset, &foundOffset, NULL, SPAN, BEGIN, true, true);
+    // final stack holding all outline items
+    markup_stack* resultStack(stack);
+
+    bool topLevelReached = false;
+
+    while (!topLevelReached && foundOffset > 0) {
+        searchOffset = foundOffset;
+        stack = GetMarkupBoundariesAt(searchOffset, &foundOffset, NULL, BLOCK, BEGIN, true, true);
+        // add all outline items found to result stack
+        for (auto item : *stack) {
+            if (IsOutlineItem(item)) {
+                resultStack->push_back(item);
+                printf("GetOutline: added %zu items to result which now has %zu items.\n", stack->size(), resultStack->size());
+                if (item->markup_type.block_type == MD_BLOCK_H) {
+                    if (item->detail != NULL && ! item->detail->IsEmpty()) {
+                        uint8 level = item->detail->GetUInt8("detail", 99);
+                        if (level == 1) {
+                            topLevelReached = true;
+                            printf("    found top level H1 @%d.\n", foundOffset);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return resultStack;
+}
+
 // TODO: this is a demi-God method, maybe split search-to-begin and search-to-end
-markup_stack* MarkdownParser::GetMarkupRangeAt(int32 offset, int32* start, int32* end,
+markup_stack* MarkdownParser::GetMarkupBoundariesAt(int32 offset, int32* start, int32* end,
                                               BOUNDARY_TYPE boundaryType,
                                               SEARCH_DIRECTION searchType,
-                                              bool returnStack, bool unique, bool traverseToRoot) {
+                                              bool returnStack, bool unique) {
 
     MD_CLASS classToSearch = (boundaryType == BLOCK ? MD_BLOCK_BEGIN : MD_SPAN_BEGIN);
     int32 searchOffset;
@@ -149,24 +183,27 @@ markup_stack* MarkdownParser::GetMarkupRangeAt(int32 offset, int32* start, int32
             auto stack = mapIter->second;
             // now search for desired markup class type in the stack found
             for (auto stackItem : *mapIter->second) {
-                if (returnStack) {
-                    if (!unique) {      // add all stack elements unfiltered
-                        resultStack->push_back(stackItem);
-                    } else {
-                        // search for already captured element with similar class, type and detail (e.g. H1 != H2)
-                        bool found = FindTextData(stackItem, blocks, spans);
-                        if (found) {
+                if (stackItem->markup_class == classToSearch) {
+                    if (returnStack) {
+                        if (! unique) {      // add all stack elements unfiltered
                             resultStack->push_back(stackItem);
+                        } else {
+                            // search for already captured element with similar class, type and detail (e.g. H1 != H2)
+                            bool found = FindTextData(stackItem, blocks, spans);
+                            if (! found) {   // add if no similar element was found
+                                resultStack->push_back(stackItem);
+                            }
                         }
                     }
-                }
-                if (stackItem->markup_class == classToSearch) {
                     startPos = mapIter->first;
 
-                    printf("  markup START boundary search: found markup class %s at offset %d\n",
-                            GetMarkupClassName(classToSearch), startPos);
+                    printf("    markup START boundary search: found markup class %s [%s] at offset %d\n",
+                            GetMarkupClassName(classToSearch),
+                            (classToSearch == MD_BLOCK_BEGIN ? GetBlockTypeName(stackItem->markup_type.block_type)
+                                                             : GetSpanTypeName(stackItem->markup_type.span_type)),
+                            startPos);
 
-                    search = traverseToRoot;    // don't stop if we want the full outline
+                    search = false;
                     break;
                 }
             }
@@ -177,7 +214,7 @@ markup_stack* MarkdownParser::GetMarkupRangeAt(int32 offset, int32* start, int32
     if (start != NULL)
         *start = startPos;
 
-    int32 endPos = fTextSize;
+    int32 endPos = fTextSize-1;
 
     if (searchType == END || searchType == BOTH) {
         printf("GetMarkupRange: searching to the END.\n");
@@ -192,22 +229,22 @@ markup_stack* MarkdownParser::GetMarkupRangeAt(int32 offset, int32* start, int32
             // process markup stack at next map position
             markup_stack* markupStack = mapIter->second;
             for (auto stackItem : *markupStack) {
-                if (returnStack) {
-                    if (!unique) {      // add all stack elements unfiltered
-                        resultStack->push_back(stackItem);
-                    } else {
-                        // search for already captured element with similar class, type and detail
-                        bool found = FindTextData(stackItem, blocks, spans);
-                        if (found) {
-                            printf("  add %s item to stack.\n", GetMarkupClassName(stackItem->markup_class));
-                            resultStack->push_back(stackItem);
-                        }
-                    }
-                }
                 auto markupClass = stackItem->markup_class;
                 if (stackItem->markup_class == classToSearch) {
+                    if (returnStack) {
+                        if (! unique) {      // add all stack elements unfiltered
+                            resultStack->push_back(stackItem);
+                        } else {
+                            // search for already captured element with similar class, type and detail
+                            bool found = FindTextData(stackItem, blocks, spans);
+                            if (! found) {   // add if no similar element was found
+                                printf("    add %s item to stack.\n", GetMarkupClassName(stackItem->markup_class));
+                                resultStack->push_back(stackItem);
+                            }
+                        }
+                    }
                     endPos = mapIter->first;
-                    printf("  markup END boundary search: found markup class %s at offset %d\n",
+                    printf("    markup END boundary search: found markup class %s at offset %d\n",
                             GetMarkupClassName(classToSearch), endPos);
 
                     search = false;
@@ -226,30 +263,40 @@ markup_stack* MarkdownParser::GetMarkupRangeAt(int32 offset, int32* start, int32
 }
 
 bool MarkdownParser::FindTextData(const text_data* data, map<MD_BLOCKTYPE, text_data*> blocks, map<MD_SPANTYPE, text_data*>  spans) {
-    bool found = false;
     for (auto block : blocks) {
         MD_BLOCKTYPE type = block.first;
-        text_data*   text = block.second;
+        text_data*   item = block.second;
         if (type == data->markup_type.block_type) {
-            if (text->detail->HasSameData(*data->detail)) {
-                found = true;
-                printf("found already captured block %s.\n", GetBlockTypeName(type));
+            if ((item->detail != NULL) && (data->detail != NULL)) {
+                if (item->detail->HasSameData(*(data->detail), true, true)) {
+                    printf("found already captured block %s.\n", GetBlockTypeName(type));
+                    return true;
+                }
+                // HasSameData seems to be buggy for Header H items (level not checked although deep is set)
+                if (item->markup_type.block_type == MD_BLOCK_H && data->markup_type.block_type == MD_BLOCK_H) {
+                    uint8 levelItem = item->detail->GetUInt8("detail", 99);
+                    uint8 levelData = data->detail->GetUInt8("detail", 99);
+                    printf("    H level %d vs %d.\n", levelItem, levelData);
+                    if (levelItem == levelData) {
+                        printf("    gotcha, bad BMessage.HasSameData() bug!\n");
+                        return true;
+                    }
+                }
             }
         }
     }
-    if (found) return true;    // already done
 
     for (auto span : spans) {
         MD_SPANTYPE  type = span.first;
-        text_data*   text = span.second;
+        text_data*   item = span.second;
         if (type == data->markup_type.span_type) {
-            if (text->detail->HasSameData(*data->detail)) {
-                found = true;
+            if ((item->detail != NULL) && (data->detail != NULL) && item->detail->HasSameData(*(data->detail), true, true)) {
                 printf("found already captured span %s.\n", GetSpanTypeName(type));
+                return true;
             }
         }
     }
-    return found;
+    return false;
 }
 
 // callback functions
@@ -421,4 +468,17 @@ const char* MarkdownParser::attr_to_str(MD_ATTRIBUTE data) {
     if (data.text == NULL || data.size == 0) return "";
     printf("attr_to_str got text %s with length %u\n", data.text, data.size);
     return (new BString(data.text, data.size))->String();
+}
+
+bool MarkdownParser::IsOutlineItem(text_data *data){
+    if (data->markup_class != MD_BLOCK_BEGIN) {
+        return false;
+    }
+    auto type = data->markup_type.block_type;
+
+    return (type == MD_BLOCK_DOC ||
+            type == MD_BLOCK_H ||
+            type == MD_BLOCK_UL ||
+            type == MD_BLOCK_OL ||
+            type == MD_BLOCK_TABLE );
 }

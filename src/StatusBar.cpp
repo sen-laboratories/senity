@@ -4,9 +4,8 @@
  */
 
 #include <LayoutBuilder.h>
-#include <string>
 #include <SeparatorView.h>
-
+#include <string>
 #include "StatusBar.h"
 
 StatusBar::StatusBar() : BView("status_bar", 0) {
@@ -17,15 +16,15 @@ StatusBar::StatusBar() : BView("status_bar", 0) {
     fSelection->SetEnabled(false);
     fSelection->SetExplicitMinSize(BSize(64.0, be_plain_font->Size()));
 
-    fOutline = new BTextControl("Outline", "-", new BMessage('Tout'));
-    fOutline->SetEnabled(false);
+    fOutline = new BStringView("Outline", "-");
     fOutline->SetExplicitMinSize(BSize(180.0, be_plain_font->Size()));
 
-	BLayoutBuilder::Group<>(this, B_HORIZONTAL, 0)
+	BLayoutBuilder::Group<>(this, B_HORIZONTAL)
 		.Add(fLine)
         .Add(fColumn)
         .Add(fOffset)
         .Add(fSelection)
+        .Add(new BStringView("outlineLabel", "Outline"))
         .Add(fOutline)
         .AddGlue(1.0);
 
@@ -60,18 +59,27 @@ void StatusBar::UpdateSelection(int32 selectionStart, int32 selectionEnd) {
 
 void StatusBar::UpdateOutline(const BMessage* outlineItems) {
     if (outlineItems == NULL || outlineItems->IsEmpty()) {
+        fOutline->SetText("");
         return;
     }
+
     BString outline;
-    char  *key[B_ATTR_NAME_LENGTH];
     int32 *count;
+
     for (int i = 0; i < outlineItems->CountNames(B_STRING_TYPE); i++) {
-        if (i > 0) {
-            outline << " " << OUTLINE_SEPARATOR << " ";
+        char  *key[B_ATTR_NAME_LENGTH];
+        status_t result = outlineItems->GetInfo(B_STRING_TYPE, i, key, NULL, count);
+        if (result != B_OK) {
+            printf("error processing text outline: %s\n", strerror(result));
+            fOutline->SetText("???");
+            return;
         }
-        outlineItems->GetInfo(B_STRING_TYPE, i, key, NULL, count);
         for (int j = 0; j < *count ; j++) {
-            outline << outlineItems->GetString(*key, i, "");
+            if (i > 0) {
+                // add separator
+                outline << " > ";
+            }
+            outline << outlineItems->GetString(*key, j, "");
         }
     }
     fOutline->SetText(outline.String());
