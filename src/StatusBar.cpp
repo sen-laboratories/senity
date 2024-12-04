@@ -47,7 +47,7 @@ void StatusBar::UpdatePosition(int32 offset, int32 line, int32 column) {
 }
 
 void StatusBar::UpdateSelection(int32 selectionStart, int32 selectionEnd) {
-    BString selection;
+    BString selection("");
     if (selectionStart != selectionEnd) {
         selection << selectionStart << " - " << selectionEnd
                   << " (" << (selectionEnd - selectionStart) << " chars)";

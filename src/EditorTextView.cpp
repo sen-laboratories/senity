@@ -90,7 +90,7 @@ void EditorTextView::MouseDown(BPoint where) {
         if (begin >= 0 && end > 0) {
             printf("highlighting text from %d - %d\n", begin, end);
             Highlight(begin, end);
-            // Draw(TextRect());   // bug in TextView not updating highlight correctly
+            Invalidate();   // bug in TextView not updating highlight correctly
         } else {
             printf("got no boundaries for offset %d!\n", offset);
         }
@@ -254,7 +254,7 @@ void EditorTextView::StyleText(text_data* markupData,
         case MD_SPAN_BEGIN: {
             spanStyles->push(markupData);
 
-            printf("StyleText: got span type %s\n",MarkdownParser::GetSpanTypeName(markupData->markup_type.span_type));
+            printf("StyleText: got span type %s\n", MarkdownParser::GetSpanTypeName(markupData->markup_type.span_type));
             break;
         }
         case MD_SPAN_END: {
@@ -266,8 +266,8 @@ void EditorTextView::StyleText(text_data* markupData,
         case MD_TEXT: {
             int32 start   = markupData->offset;
             int32 end     = start + markupData->length;
-            BFont font(be_plain_font);
-            rgb_color color = textColor;
+            BFont font(be_fixed_font);
+            rgb_color color(textColor);
 
             while (! blockStyles->empty()) {
                 text_data *blockStyle = blockStyles->top();
@@ -288,7 +288,7 @@ void EditorTextView::StyleText(text_data* markupData,
             }
 
             SetTextStyle(markupData->markup_type.text_type, &font, &color);
-            SetFontAndColor(start, end, &font, B_FONT_FAMILY_AND_STYLE, &color);
+            SetFontAndColor(start, end, &font, B_FONT_ALL, &color);
 
             typeInfo = MarkdownParser::GetTextTypeName(markupData->markup_type.text_type);
             printf("StyleText @%d - %d: calculated style for class %s, type %s: font face %d, color rgb %d, %d, %d\n",
@@ -311,38 +311,43 @@ void EditorTextView::SetBlockStyle(MD_BLOCKTYPE blockType, BMessage *detail, BFo
             break;
         }
         case MD_BLOCK_H: {
+            *font = *be_fixed_font;
             uint8 level;
             if (detail->FindUInt8("level", &level) == B_OK) {
-                float headerSizeFac = (7 - level) / 3.2;                // max 6 levels in markdown
-                font->SetSize(be_plain_font->Size() * headerSizeFac);   // H1 = 2*normal size
+                float headerSizeFac = (7 - level) / 3.2;       // max 6 levels in markdown
+                font->SetSize(font->Size() * headerSizeFac);   // H1 = 2*normal size
                 font->SetFace(B_HEAVY_FACE);
             }
             *color = codeColor;
             break;
         }
         case MD_BLOCK_QUOTE: {
-            font->SetFace(B_ITALIC_FACE);
+            font->SetFace(font->Face() | B_ITALIC_FACE);
             *color = codeColor;
             break;
         }
         case MD_BLOCK_HR: {
-            font->SetFace(B_LIGHT_FACE);
+            *font = *be_fixed_font;
             *color = codeColor;
+            font->SetFace(font->Face() | B_LIGHT_FACE);
             break;
         }
         case MD_BLOCK_HTML: {
-            font->SetSpacing(B_FIXED_SPACING);
+            *font = *be_fixed_font;
             *color = codeColor;
+            font->SetSpacing(B_FIXED_SPACING);
             break;
         }
         case MD_BLOCK_P: {
-            font->SetFace(B_REGULAR_FACE);
-            *color = textColor;
+            printf("SetSpanStyle: para (ignored)\n");
+            // font->SetFace(B_REGULAR_FACE);
+            // *color = textColor;
             break;
         }
         case MD_BLOCK_TABLE: {
-            font->SetSpacing(B_FIXED_SPACING);
+            *font = *be_fixed_font;
             *color = codeColor;
+            font->SetSpacing(B_FIXED_SPACING);
             break;
         }
         default:
@@ -355,7 +360,7 @@ void EditorTextView::SetSpanStyle(MD_SPANTYPE spanType, BMessage *detail, BFont 
         case MD_SPAN_A:
         case MD_SPAN_WIKILINK: {    // fallthrough
             printf("SetSpanStyle: hyperlink\n");
-            font->SetFace(B_UNDERSCORE_FACE);
+            font->SetFace(font->Face() | B_UNDERSCORE_FACE);
             *color = linkColor;
             break;
         }
@@ -371,19 +376,19 @@ void EditorTextView::SetSpanStyle(MD_SPANTYPE spanType, BMessage *detail, BFont 
             break;
         }
         case MD_SPAN_DEL: {
-            font->SetFace(B_STRIKEOUT_FACE);
+            font->SetFace(font->Face() | B_STRIKEOUT_FACE);
             break;
         }
         case MD_SPAN_U: {
-            font->SetFace(B_UNDERSCORE_FACE);
+            font->SetFace(font->Face() | B_UNDERSCORE_FACE);
             break;
         }
         case MD_SPAN_STRONG: {
-            font->SetFace(B_BOLD_FACE);
+            font->SetFace(font->Face() | B_BOLD_FACE);
             break;
         }
         case MD_SPAN_EM: {
-            font->SetFace(B_ITALIC_FACE);
+            font->SetFace(font->Face() | B_ITALIC_FACE);
             break;
         }
         default:
@@ -394,11 +399,13 @@ void EditorTextView::SetSpanStyle(MD_SPANTYPE spanType, BMessage *detail, BFont 
 void EditorTextView::SetTextStyle(MD_TEXTTYPE textType, BFont *font, rgb_color *color) {
     switch (textType) {
         case MD_TEXT_CODE: {
+            printf("set text style CODE.\n");
             font->SetSpacing(B_FIXED_SPACING);
             *color = codeColor;
             break;
         }
         case MD_TEXT_HTML: {
+            printf("set text style HTML.\n");
             font->SetSpacing(B_FIXED_SPACING);
             *color = linkColor;
             break;

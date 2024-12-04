@@ -125,7 +125,7 @@ markup_stack* MarkdownParser::GetOutlineAt(int32 offset) {
                 printf("GetOutline: added %zu items to result which now has %zu items.\n", stack->size(), resultStack->size());
                 if (item->markup_type.block_type == MD_BLOCK_H) {
                     if (item->detail != NULL && ! item->detail->IsEmpty()) {
-                        uint8 level = item->detail->GetUInt8("detail", 99);
+                        uint8 level = item->detail->GetUInt8("level", 99);
                         if (level == 1) {
                             topLevelReached = true;
                             printf("    found top level H1 @%d.\n", foundOffset);
@@ -160,8 +160,9 @@ markup_stack* MarkdownParser::GetMarkupBoundariesAt(int32 offset, int32* start, 
     if (mapIter == fTextLookup->markupMap->cend()) {
         if (start != NULL)
             *start = -1;
-        if (end!= NULL)
-            *end= -1;
+        if (end != NULL)
+            *end = -1;
+        printf("error: could not find offset %d in lookupMap!\n", searchOffset);
         return NULL;
     }
 
@@ -214,12 +215,19 @@ markup_stack* MarkdownParser::GetMarkupBoundariesAt(int32 offset, int32* start, 
     if (start != NULL)
         *start = startPos;
 
-    int32 endPos = fTextSize-1;
+    int32 endPos = fTextSize - 1;
 
     if (searchType == END || searchType == BOTH) {
         printf("GetMarkupRange: searching to the END.\n");
         // now search forward to matching BLOCK_END/SPAN_END from original text offset on
         mapIter = fTextLookup->markupMap->find(searchOffset);
+        if (mapIter == fTextLookup->markupMap->cend()) {
+            if (end != NULL)
+                *end = -1;
+
+            printf("error: could not find offset %d in lookupMap!\n", searchOffset);
+            return NULL;
+        }
         classToSearch = (boundaryType == BLOCK ? MD_BLOCK_END : MD_SPAN_END);
 
         search = true;
@@ -274,8 +282,8 @@ bool MarkdownParser::FindTextData(const text_data* data, map<MD_BLOCKTYPE, text_
                 }
                 // HasSameData seems to be buggy for Header H items (level not checked although deep is set)
                 if (item->markup_type.block_type == MD_BLOCK_H && data->markup_type.block_type == MD_BLOCK_H) {
-                    uint8 levelItem = item->detail->GetUInt8("detail", 99);
-                    uint8 levelData = data->detail->GetUInt8("detail", 99);
+                    uint8 levelItem = item->detail->GetUInt8("level", 99);
+                    uint8 levelData = data->detail->GetUInt8("level", 99);
                     printf("    H level %d vs %d.\n", levelItem, levelData);
                     if (levelItem == levelData) {
                         printf("    gotcha, bad BMessage.HasSameData() bug!\n");
