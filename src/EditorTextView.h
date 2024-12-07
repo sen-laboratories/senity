@@ -12,9 +12,10 @@
 #include "MarkdownParser.h"
 #include "StatusBar.h"
 
-const rgb_color linkColor = ui_color(B_LINK_TEXT_COLOR);
-const rgb_color codeColor = ui_color(B_SHADOW_COLOR);
-const rgb_color textColor = ui_color(B_DOCUMENT_TEXT_COLOR);
+const rgb_color linkColor   = ui_color(B_LINK_TEXT_COLOR);
+const rgb_color codeColor   = ui_color(B_SHADOW_COLOR);
+const rgb_color textColor   = ui_color(B_DOCUMENT_TEXT_COLOR);
+const rgb_color headerColor = ui_color(B_CONTROL_HIGHLIGHT_COLOR);  // todo: use tinting
 
 class EditorTextView : public BTextView {
 
@@ -43,10 +44,9 @@ public:
 
 private:
     void            MarkupText(int32 start, int32 end);
-    void            StyleText(text_data* markupInfo, std::stack<text_data*> *blockStyles,
-                                                     std::stack<text_data*> *stackStyles);
-    void            SetBlockStyle(MD_BLOCKTYPE blockType, BMessage* detail, BFont* font, rgb_color* color);
-    void            SetSpanStyle(MD_SPANTYPE spanType, BMessage* detail, BFont* font, rgb_color* color);
+    void            StyleText(text_data* markupInfo, BFont* font, rgb_color* color);
+    void            SetBlockStyle(text_data* markupInfo, BFont* font, rgb_color* color);
+    void            SetSpanStyle(text_data* markupInfo, BFont* font, rgb_color* color);
     void            SetTextStyle(MD_TEXTTYPE textType, BFont *font, rgb_color *color);
     BMessage*       GetOutlineAt(int32 offset, bool withNames = false);
     void            UpdateStatus();
@@ -54,6 +54,7 @@ private:
     BMessenger*     fMessenger;
     StatusBar*      fStatusBar;
     MarkdownParser* fMarkdownParser;
+    BFont*          fTextFont;
     BFont*          fLinkFont;
     BFont*          fCodeFont;
 };

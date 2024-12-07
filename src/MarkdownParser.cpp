@@ -46,7 +46,7 @@ std::map<int32, markup_stack*>* MarkdownParser::GetMarkupMap() {
 void MarkdownParser::Init() {
     fParser->abi_version = 0;
     fParser->syntax = 0;
-    fParser->flags = MD_DIALECT_COMMONMARK;
+    fParser->flags = MD_DIALECT_GITHUB;
     fParser->enter_block = &MarkdownParser::EnterBlock;
     fParser->leave_block = &MarkdownParser::LeaveBlock;
     fParser->enter_span  = &MarkdownParser::EnterSpan;
@@ -107,24 +107,26 @@ markup_stack* MarkdownParser::GetMarkupStackAt(int32 offset, int32* mapOffsetFou
 }
 
 markup_stack* MarkdownParser::GetOutlineAt(int32 offset) {
-    int32 searchOffset = offset, foundOffset;
+    int32 searchOffset = offset;
+    int32 foundOffset;
     // first, trace begin of current span
-    markup_stack* stack = GetMarkupBoundariesAt(searchOffset, &foundOffset, NULL, SPAN, BEGIN, true, true);
+    markup_stack* stack;    // = GetMarkupBoundariesAt(searchOffset, &foundOffset, NULL, SPAN, BEGIN, true, true);
     // final stack holding all outline items
-    markup_stack* resultStack(stack);
+    markup_stack* resultStack = new markup_stack;
 
     bool topLevelReached = false;
 
-    while (!topLevelReached && foundOffset > 0) {
+    while (!topLevelReached && searchOffset > 0) {
         searchOffset = foundOffset;
+        printf("GetOutlineAt %d: searching at %d..\n", offset, searchOffset);
         stack = GetMarkupBoundariesAt(searchOffset, &foundOffset, NULL, BLOCK, BEGIN, true, true);
         // add all outline items found to result stack
         for (auto item : *stack) {
             if (IsOutlineItem(item)) {
                 resultStack->push_back(item);
-                printf("GetOutline: added %zu items to result which now has %zu items.\n", stack->size(), resultStack->size());
+                printf("GetOutline: added %zu item(s) to result which now has %zu items.\n", stack->size(), resultStack->size());
                 if (item->markup_type.block_type == MD_BLOCK_H) {
-                    if (item->detail != NULL && ! item->detail->IsEmpty()) {
+                    if (item->detail != NULL) {
                         uint8 level = item->detail->GetUInt8("level", 99);
                         if (level == 1) {
                             topLevelReached = true;
@@ -215,10 +217,11 @@ markup_stack* MarkdownParser::GetMarkupBoundariesAt(int32 offset, int32* start, 
     if (start != NULL)
         *start = startPos;
 
-    int32 endPos = fTextSize - 1;
+    int32 endPos = offset;
 
     if (searchType == END || searchType == BOTH) {
         printf("GetMarkupRange: searching to the END.\n");
+
         // now search forward to matching BLOCK_END/SPAN_END from original text offset on
         mapIter = fTextLookup->markupMap->find(searchOffset);
         if (mapIter == fTextLookup->markupMap->cend()) {
@@ -264,43 +267,46 @@ markup_stack* MarkdownParser::GetMarkupBoundariesAt(int32 offset, int32* start, 
     if (end != NULL)
         *end = endPos;
 
-    printf("found %s around offset %d from %d to %d.\n", boundaryType == BLOCK ? "BLOCK" : "SPAN",
+    printf("GetMarkupBoundary: found %s with offset %d from %d to %d.\n", boundaryType == BLOCK ? "BLOCK" : "SPAN",
         offset, startPos, endPos);
 
     return resultStack;
 }
 
-bool MarkdownParser::FindTextData(const text_data* data, map<MD_BLOCKTYPE, text_data*> blocks, map<MD_SPANTYPE, text_data*>  spans) {
-    for (auto block : blocks) {
-        MD_BLOCKTYPE type = block.first;
-        text_data*   item = block.second;
-        if (type == data->markup_type.block_type) {
-            if ((item->detail != NULL) && (data->detail != NULL)) {
-                if (item->detail->HasSameData(*(data->detail), true, true)) {
-                    printf("found already captured block %s.\n", GetBlockTypeName(type));
-                    return true;
-                }
-                // HasSameData seems to be buggy for Header H items (level not checked although deep is set)
-                if (item->markup_type.block_type == MD_BLOCK_H && data->markup_type.block_type == MD_BLOCK_H) {
-                    uint8 levelItem = item->detail->GetUInt8("level", 99);
-                    uint8 levelData = data->detail->GetUInt8("level", 99);
-                    printf("    H level %d vs %d.\n", levelItem, levelData);
-                    if (levelItem == levelData) {
-                        printf("    gotcha, bad BMessage.HasSameData() bug!\n");
+bool MarkdownParser::FindTextData(const text_data* data, map<MD_BLOCKTYPE, text_data*> blocks, map<MD_SPANTYPE, text_data*> spans) {
+    if (data->markup_class == MD_BLOCK_BEGIN || data->markup_class == MD_BLOCK_END) {
+        for (auto block : blocks) {
+            MD_BLOCKTYPE type = block.first;
+            text_data*   item = block.second;
+
+            if (type == data->markup_type.block_type) {
+                if ((item->detail != NULL) && (data->detail != NULL)) {
+                    if (item->detail->HasSameData(*(data->detail), true, true)) {
+                        printf("found already captured block %s.\n", GetBlockTypeName(type));
                         return true;
+                    }
+                    // HasSameData seems to be buggy for Header H items (level not checked although deep is set)
+                    if (item->markup_type.block_type == MD_BLOCK_H && data->markup_type.block_type == MD_BLOCK_H) {
+                        uint8 levelItem = item->detail->GetUInt8("level", 99);
+                        uint8 levelData = data->detail->GetUInt8("level", 99);
+                        printf("    H level %d vs %d.\n", levelItem, levelData);
+                        if (levelItem == levelData) {
+                            printf("    gotcha, bad BMessage.HasSameData() bug!\n");
+                            return true;
+                        }
                     }
                 }
             }
         }
-    }
-
-    for (auto span : spans) {
-        MD_SPANTYPE  type = span.first;
-        text_data*   item = span.second;
-        if (type == data->markup_type.span_type) {
-            if ((item->detail != NULL) && (data->detail != NULL) && item->detail->HasSameData(*(data->detail), true, true)) {
-                printf("found already captured span %s.\n", GetSpanTypeName(type));
-                return true;
+    } else if (data->markup_class != MD_TEXT) {
+        for (auto span : spans) {
+            MD_SPANTYPE  type = span.first;
+            text_data*   item = span.second;
+            if (type == data->markup_type.span_type) {
+                if ((item->detail != NULL) && (data->detail != NULL) && item->detail->HasSameData(*(data->detail), true, true)) {
+                    printf("found already captured span %s.\n", GetSpanTypeName(type));
+                    return true;
+                }
             }
         }
     }
@@ -484,9 +490,10 @@ bool MarkdownParser::IsOutlineItem(text_data *data){
     }
     auto type = data->markup_type.block_type;
 
-    return (type == MD_BLOCK_DOC ||
+    return true;    //TEST
+    /*return (type == MD_BLOCK_DOC ||
             type == MD_BLOCK_H ||
             type == MD_BLOCK_UL ||
             type == MD_BLOCK_OL ||
-            type == MD_BLOCK_TABLE );
+            type == MD_BLOCK_TABLE );*/
 }
