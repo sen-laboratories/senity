@@ -220,29 +220,42 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
 
     printf("\n*** parsing finished, now styling... ***\n");
 
-    // we don't need to use a stack or similar since we only apply a partial style
-    // as per block/span type and detail upon BLOCK/SPAN BEGIN, and later "unapply"
-    // that partial style upon BLOCK/SPAN END.
+    // we need to use a stack for caching the last active block style to return to on BLOCK_END.
+    // we decide upon the style to use for blocks and spans on BLOCK/SPAN BEGIN, and later "unapply"
+    // that partial style for spans on SPAN_END or take the last active block style on BLOCK_END.
     // see https://github.com/mity/md4c/wiki/Embedding-Parser%3A-Calling-MD4C#typical-implementation
     BFont font(be_fixed_font);
     rgb_color color(textColor);
+    stack<text_data*> markupDataStack;
 
     // process all text map items in the parsed text
     for (auto info : *(fMarkdownParser->GetMarkupMap())) {
         // process all markup stack items at this map offset
         for (auto stackItem : *info.second) {
-            StyleText(stackItem, &font, &color);
+            StyleText(stackItem, &markupDataStack, &font, &color);
         }
     }
 }
 
-void EditorTextView::StyleText(text_data* markupData, BFont* font, rgb_color* color) {
+void EditorTextView::StyleText(text_data* markupData, stack<text_data*> *markupStack, BFont* font, rgb_color* color) {
     const char *typeInfo;
 
     switch (markupData->markup_class) {
-        case MD_BLOCK_BEGIN:    // fallthrough, BEGIN/END decision handled in StyleBlock
-        case MD_BLOCK_END: {
+        case MD_BLOCK_BEGIN: {
+            markupStack->push(markupData);
             SetBlockStyle(markupData, font, color);
+            break;
+        }
+        case MD_BLOCK_END: {
+            if (markupStack->empty()) {
+                // could possibly happen when syntax is really borked, let's go sure
+                *font = *fTextFont;
+                *color = textColor;
+            } else {
+                text_data* cachedMarkup = markupStack->top();
+                SetBlockStyle(cachedMarkup, font, color);
+                markupStack->pop();
+            }
             break;
         }
         case MD_SPAN_BEGIN:     // see above comment
@@ -270,88 +283,54 @@ void EditorTextView::StyleText(text_data* markupData, BFont* font, rgb_color* co
 
 void EditorTextView::SetBlockStyle(text_data* markupInfo, BFont *font, rgb_color *color) {
     MD_BLOCKTYPE blockType = markupInfo->markup_type.block_type;
-    bool apply = (markupInfo->markup_class == MD_BLOCK_BEGIN);
     const char* blockTypeName = MarkdownParser::GetBlockTypeName(blockType);
 
-    printf("    SetBlockStyle %s: %s\n", blockTypeName, apply ? "ON" : "OFF");
+    printf("    SetBlockStyle %s\n", blockTypeName);
 
     switch (blockType) {
         case MD_BLOCK_CODE: {
-            if (apply) {
-                *font = *fCodeFont;
-                *color = codeColor;
-            } else {
-                *font = *fTextFont;
-                *color = textColor;
-            }
+            *font = *fCodeFont;
+            *color = codeColor;
             break;
         }
         case MD_BLOCK_H: {
-            if (apply) {
-                *font = fTextFont;
-                uint8 level;
-                BMessage *detail = markupInfo->detail;
-                if (detail == NULL) {
-                    printf("    internal error, no detail found for H block!\n");
-                    break;
-                }
-                if (detail->FindUInt8("level", &level) == B_OK) {
-                    float headerSizeFac = (7 - level) / 3.2;       // max 6 levels in markdown
-                    font->SetSize(font->Size() * headerSizeFac);   // H1 = 2*normal size
-                    font->SetFace(B_HEAVY_FACE);
-                }
-                *color = headerColor;
-            } else {
-                *color = textColor;
+            *font = fTextFont;
+            uint8 level;
+            BMessage *detail = markupInfo->detail;
+            if (detail == NULL) {
+                printf("    internal error, no detail found for H block!\n");
+                break;
             }
+            if (detail->FindUInt8("level", &level) == B_OK) {
+                float headerSizeFac = (7 - level) / 3.2;       // max 6 levels in markdown
+                font->SetSize(font->Size() * headerSizeFac);   // H1 = 2*normal size
+                font->SetFace(B_HEAVY_FACE);
+            }
+            *color = headerColor;
             break;
         }
         case MD_BLOCK_QUOTE: {
-            if (apply) {
-                font->SetFace(font->Face() | B_ITALIC_FACE);
-                *color = codeColor;
-            } else {
-                font->SetFace(font->Face() &~ B_ITALIC_FACE);
-                *color = textColor;
-            }
+            font->SetFace(font->Face() | B_ITALIC_FACE);
+            *color = codeColor;
             break;
         }
         case MD_BLOCK_HR: {
-            if (apply) {
-                *font = *fTextFont;
-                *color = headerColor;
-                font->SetFace(font->Face() | B_LIGHT_FACE);
-            }
-            else {
-                *color = textColor;
-                font->SetFace(font->Face() &~ B_LIGHT_FACE);
-            }
+            *font = *fTextFont;
+            *color = headerColor;
+            font->SetFace(font->Face() | B_LIGHT_FACE);
             break;
         }
         case MD_BLOCK_HTML: {
-            if (apply) {
-                *font = fCodeFont;
-                *color = codeColor;
-            } else {
-                *font = fTextFont;
-                *color = textColor;
-            }
+            *font = fCodeFont;
+            *color = codeColor;
             break;
         }
         case MD_BLOCK_UL: {
-            if (apply) {
-                *color = linkColor;
-            } else {
-                *color = textColor;
-            }
+            *color = linkColor;
             break;
         }
         case MD_BLOCK_OL: {
-            if (apply) {
-                *color = linkColor;
-            } else {
-                *color = textColor;
-            }
+            *color = linkColor;
             break;
         }
         case MD_BLOCK_LI: {
@@ -365,13 +344,8 @@ void EditorTextView::SetBlockStyle(text_data* markupInfo, BFont *font, rgb_color
             break;
         }
         case MD_BLOCK_TABLE: {
-            if (apply) {
-                *font = fCodeFont;
-                *color = codeColor;
-            } else {
-                *font = fTextFont;
-                *color = textColor;
-            }
+            *font = fCodeFont;
+            *color = codeColor;
             break;
         }
         default:

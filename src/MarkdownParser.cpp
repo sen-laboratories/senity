@@ -118,14 +118,14 @@ markup_stack* MarkdownParser::GetOutlineAt(int32 offset) {
 
     while (!topLevelReached && searchOffset > 0) {
         searchOffset = foundOffset;
-        printf("GetOutlineAt %d: searching at %d..\n", offset, searchOffset);
         stack = GetMarkupBoundariesAt(searchOffset, &foundOffset, NULL, BLOCK, BEGIN, true, true);
+        printf("GetOutlineAt %d: found map offset %d..\n", searchOffset, foundOffset);
         // add all outline items found to result stack
         for (auto item : *stack) {
             if (IsOutlineItem(item)) {
                 resultStack->push_back(item);
                 printf("GetOutline: added %zu item(s) to result which now has %zu items.\n", stack->size(), resultStack->size());
-                if (item->markup_type.block_type == MD_BLOCK_H) {
+                if (item->markup_class == MD_BLOCK_BEGIN && item->markup_type.block_type == MD_BLOCK_H) {
                     if (item->detail != NULL) {
                         uint8 level = item->detail->GetUInt8("level", 99);
                         if (level == 1) {
