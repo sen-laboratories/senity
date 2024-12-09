@@ -16,7 +16,7 @@ StatusBar::StatusBar() : BView("status_bar", 0) {
     fSelection->SetEnabled(false);
     fSelection->SetExplicitMinSize(BSize(64.0, be_plain_font->Size()));
 
-    fOutline = new BStringView("Outline", "-");
+    fOutline = new BStringView("outline", "-");
     fOutline->SetExplicitMinSize(BSize(180.0, be_plain_font->Size()));
 
 	BLayoutBuilder::Group<>(this, B_HORIZONTAL)
@@ -75,12 +75,17 @@ void StatusBar::UpdateOutline(const BMessage* outlineItems) {
             return;
         }
         for (int j = 0; j < *count ; j++) {
-            if (i > 0) {
+            if (j > 0) {
                 // add separator
                 outline << " > ";
             }
             outline << outlineItems->GetString(*key, j, "");
         }
+        if (i > 0) {
+            // add separator
+            outline << " > ";
+        }
     }
+    printf("outline: %s\n", outline.String());
     fOutline->SetText(outline.String());
 }

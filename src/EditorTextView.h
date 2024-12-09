@@ -44,7 +44,9 @@ public:
 
 private:
     void            MarkupText(int32 start, int32 end);
-    void            StyleText(text_data* markupInfo, stack<text_data*> *markupStack, BFont* font, rgb_color* color);
+    void            StyleText(text_data* markupInfo,
+                              stack<text_data*> *blockMarkupStack, stack<text_data*> *spanMarkupStack,
+                              BFont* font, rgb_color* color);
     void            SetBlockStyle(text_data* markupInfo, BFont* font, rgb_color* color);
     void            SetSpanStyle(text_data* markupInfo, BFont* font, rgb_color* color);
     void            SetTextStyle(MD_TEXTTYPE textType, BFont *font, rgb_color *color);
