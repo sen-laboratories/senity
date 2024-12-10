@@ -45,11 +45,11 @@ public:
 private:
     void            MarkupText(int32 start, int32 end);
     void            StyleText(text_data* markupInfo,
-                              stack<text_data*> *blockMarkupStack, stack<text_data*> *spanMarkupStack,
+                              stack<text_run> *styleStack,
                               BFont* font, rgb_color* color);
     void            SetBlockStyle(text_data* markupInfo, BFont* font, rgb_color* color);
     void            SetSpanStyle(text_data* markupInfo, BFont* font, rgb_color* color);
-    void            SetTextStyle(MD_TEXTTYPE textType, BFont *font, rgb_color *color);
+    void            SetTextStyle(text_data* markupInfo, BFont *font, rgb_color *color);
     BMessage*       GetOutlineAt(int32 offset, bool withNames = false);
     void            UpdateStatus();
 

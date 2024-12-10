@@ -46,7 +46,7 @@ std::map<int32, markup_stack*>* MarkdownParser::GetMarkupMap() {
 void MarkdownParser::Init() {
     fParser->abi_version = 0;
     fParser->syntax = 0;
-    fParser->flags = MD_DIALECT_COMMONMARK; //MD_DIALECT_GITHUB;
+    fParser->flags = MD_DIALECT_GITHUB; //MD_DIALECT_COMMONMARK
     fParser->enter_block = &MarkdownParser::EnterBlock;
     fParser->leave_block = &MarkdownParser::LeaveBlock;
     fParser->enter_span  = &MarkdownParser::EnterSpan;
@@ -454,6 +454,13 @@ BMessage* MarkdownParser::GetDetailForBlockType(MD_BLOCKTYPE type, void* detail)
         case MD_BLOCK_H: {
             auto detailData = reinterpret_cast<MD_BLOCK_H_DETAIL*>(detail);
             detailMsg->AddUInt8("level", detailData->level);
+            break;
+        }
+        case MD_BLOCK_TABLE: {
+            auto detailData = reinterpret_cast<MD_BLOCK_TABLE_DETAIL*>(detail);
+            detailMsg->AddUInt8("headRowCount", detailData->head_row_count);
+            detailMsg->AddUInt8("bodyRowCount", detailData->body_row_count);
+            detailMsg->AddUInt8("colCount", detailData->col_count);
             break;
         }
         default: {

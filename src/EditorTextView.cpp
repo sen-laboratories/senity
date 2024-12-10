@@ -27,10 +27,13 @@ EditorTextView::EditorTextView(StatusBar *statusBar, BHandler *editorHandler)
     fMessenger = new BMessenger(editorHandler);
 
     // setup fonts
-    fTextFont = new BFont(be_plain_font);     // same as code font for now
+    fTextFont = new BFont(be_plain_font);
+    // fTextFont->SetSize(be_plain_font->Size());
     fLinkFont = new BFont(be_plain_font);
-    fLinkFont->SetFace(B_UNDERSCORE_FACE);
+    // fLinkFont->SetFace(B_UNDERSCORE_FACE);
+    fLinkFont->SetSize(be_plain_font->Size());
     fCodeFont = new BFont(be_fixed_font);
+    // fCodeFont->SetSize(be_fixed_font->Size());
 
     // setup markdown syntax styler
     fMarkdownParser = new MarkdownParser();
@@ -225,70 +228,71 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
 
     printf("\n*** parsing finished, now styling... ***\n");
 
-    // we need to use a stack for caching the last active block style to return to on BLOCK_END.
-    // we decide upon the style to use for blocks and spans on BLOCK/SPAN BEGIN, and later "unapply"
-    // that partial style for spans on SPAN_END or take the last active block style on BLOCK_END.
+    // we need to use a stack for caching the last active block/span style to return to on BLOCK_END or SPAN_END,
+    // since we cannot simply "undo" the last style, as they might be stacked inside each other.
     // see https://github.com/mity/md4c/wiki/Embedding-Parser%3A-Calling-MD4C#typical-implementation
     BFont font(be_fixed_font);
     rgb_color color(textColor);
-    stack<text_data*> blockMarkupStack;
-    stack<text_data*> spanMarkupStack;
+    stack<text_run> styleStack;
 
     // process all text map items in the parsed text
     for (auto info : *(fMarkdownParser->GetMarkupMap())) {
+        // reset for text-only parts
+        if (styleStack.empty()) {
+            auto item = *info.second->begin();
+            if (item->markup_class == MD_TEXT) {
+                printf("= style stack empty, resetting style.\n");
+                font = *fTextFont;
+                color = textColor;
+            }
+        }
         // process all markup stack items at this map offset
         for (auto stackItem : *info.second) {
-            StyleText(stackItem, &blockMarkupStack, &spanMarkupStack, &font, &color);
+            StyleText(stackItem, &styleStack, &font, &color);
         }
     }
 }
 
 void EditorTextView::StyleText(text_data* markupData,
-                               stack<text_data*> *blockMarkupStack,
-                               stack<text_data*> *spanMarkupStack,
+                               stack<text_run> *styleStack,
                                BFont* font, rgb_color* color) {
     const char *typeInfo;
 
     switch (markupData->markup_class) {
-        case MD_BLOCK_BEGIN: {
-            SetBlockStyle(markupData, font, color);
-            blockMarkupStack->push(markupData);
-            break;
-        }
-        case MD_BLOCK_END: {
-            if (blockMarkupStack->empty()) {
-                // could possibly happen when syntax is really borked, let's go sure
-                *font = *fTextFont;
-                *color = textColor;
-            } else {
-                text_data* cachedMarkup = blockMarkupStack->top();
-                SetBlockStyle(cachedMarkup, font, color);
-
-                blockMarkupStack->pop();
-            }
-            break;
-        }
+        case MD_BLOCK_BEGIN:
         case MD_SPAN_BEGIN: {
-            SetSpanStyle(markupData, font, color);
-            spanMarkupStack->push(markupData);
+            if (markupData->markup_class == MD_BLOCK_BEGIN) {
+                SetBlockStyle(markupData, font, color);
+            }
+            else {
+                SetSpanStyle(markupData, font, color);
+            }
+            text_run run;
+            run.color = *color;
+            run.font  = *font;
+            styleStack->push(text_run(run));
+            printf("> pushing %s style -> %zu runs.\n", MarkdownParser::GetMarkupClassName(markupData->markup_class),
+                styleStack->size());
             break;
         }
+        case MD_BLOCK_END:
         case MD_SPAN_END: {
-            text_data* cachedMarkup = spanMarkupStack->top();
-            SetSpanStyle(cachedMarkup, font, color);
+            if (!styleStack->empty()) {
+                text_run run = styleStack->top();
+                *font = run.font;
+                *color = run.color;
 
-            spanMarkupStack->pop();
+                styleStack->pop();
+            }
+            printf("< popping %s style -> %zu runs.\n", MarkdownParser::GetMarkupClassName(markupData->markup_class),
+                styleStack->size());
             break;
         }
         case MD_TEXT: {         // here the styles set before are actually applied to rendered text
             int32 start   = markupData->offset;
             int32 end     = start + markupData->length;
 
-            auto currentStack = fMarkdownParser->GetMarkupStackAt(markupData->offset);
-            if (currentStack->size() == 1) { // only TEXT effective here
-                printf("StyleText: got only TEXT, styling TEXT.\n");
-                SetTextStyle(markupData->markup_type.text_type, font, color);
-            }
+            SetTextStyle(markupData, font, color);
             SetFontAndColor(start, end, font, B_FONT_ALL, color);
 
             typeInfo = MarkdownParser::GetTextTypeName(markupData->markup_type.text_type);
@@ -306,7 +310,7 @@ void EditorTextView::SetBlockStyle(text_data* markupInfo, BFont *font, rgb_color
     MD_BLOCKTYPE blockType = markupInfo->markup_type.block_type;
     const char* blockTypeName = MarkdownParser::GetBlockTypeName(blockType);
 
-    printf("    SetBlockStyle %s\n", blockTypeName);
+    printf("> SetBlockStyle for %s\n", blockTypeName);
 
     switch (blockType) {
         case MD_BLOCK_CODE: {
@@ -329,6 +333,7 @@ void EditorTextView::SetBlockStyle(text_data* markupInfo, BFont *font, rgb_color
             break;
         }
         case MD_BLOCK_QUOTE: {
+            *font = fTextFont;
             font->SetFace(font->Face() | B_ITALIC_FACE);
             *color = codeColor;
             break;
@@ -356,7 +361,7 @@ void EditorTextView::SetBlockStyle(text_data* markupInfo, BFont *font, rgb_color
         }
         case MD_BLOCK_LI: {
             *font = fTextFont;
-            *color = textColor;
+            *color = linkColor;
             break;
         }
         case MD_BLOCK_P: {
@@ -378,7 +383,7 @@ void EditorTextView::SetSpanStyle(text_data* markupInfo, BFont *font, rgb_color 
     MD_SPANTYPE spanType = markupInfo->markup_type.span_type;
     const char* spanTypeName = MarkdownParser::GetSpanTypeName(spanType);
 
-    printf("    SetSpanStyle %s\n", spanTypeName);
+    printf("> SetSpanStyle for %s\n", spanTypeName);
 
     switch (spanType) {
         case MD_SPAN_A:
@@ -388,59 +393,63 @@ void EditorTextView::SetSpanStyle(text_data* markupInfo, BFont *font, rgb_color 
             break;
         }
         case MD_SPAN_IMG: {
+            font->SetFace(font->Face() | B_REGULAR_FACE);
             *color = linkColor;
             break;
         }
         case MD_SPAN_CODE: {
+            font->SetFace(font->Face() | B_REGULAR_FACE);
             *color = codeColor;
             break;
         }
         case MD_SPAN_DEL: {
-            *color = codeColor;
             font->SetFace(font->Face() | B_STRIKEOUT_FACE);
+            *color = codeColor;
             break;
         }
         case MD_SPAN_U: {
-            *color = textColor;
             font->SetFace(font->Face() | B_UNDERSCORE_FACE);
+            *color = textColor;
             break;
         }
         case MD_SPAN_STRONG: {
-            *color = textColor;
             font->SetFace(font->Face() | B_BOLD_FACE);
+            *color = textColor;
             break;
         }
         case MD_SPAN_EM: {
-            *color = textColor;
             font->SetFace(font->Face() | B_ITALIC_FACE);
+            *color = textColor;
             break;
         }
         default:
+            font->SetFace(font->Face() | B_REGULAR_FACE);
+            *color = textColor;
             break;
     }
 }
 
-void EditorTextView::SetTextStyle(MD_TEXTTYPE textType, BFont *font, rgb_color *color) {
+void EditorTextView::SetTextStyle(text_data* markupInfo, BFont *font, rgb_color *color) {
+    MD_TEXTTYPE textType = markupInfo->markup_type.text_type;
+
     switch (textType) {
         case MD_TEXT_CODE: {
             font->SetSpacing(B_FIXED_SPACING);
-            font->SetSize(fTextFont->Size());
             *color = codeColor;
             break;
         }
         case MD_TEXT_HTML: {
             font->SetSpacing(B_FIXED_SPACING);
-            font->SetSize(fTextFont->Size());
             *color = linkColor;
             break;
         }
         case MD_TEXT_NORMAL: {
-            *font = fTextFont;
-            *color = textColor;
+            // use span/block style here!
             break;
         }
         default:
-            // don't override block and span styles here! just keep it as is
+            *font = *fTextFont;
+            *color = textColor;
             break;
     }
 }
