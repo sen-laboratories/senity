@@ -55,7 +55,10 @@ typedef struct text_data {
 } text_data;
 
 // used as temporary processing buffer for styling
-typedef struct vector<text_data*>   markup_stack;
+typedef struct vector<text_data*>               markup_stack;
+typedef map<int32, markup_stack*>               markup_map;
+typedef map<int32, markup_stack*>::iterator     markup_map_iter;
+typedef map<const char*, text_data*>            outline_map;
 
 /**
  * main structure for integrating markdown parser.
@@ -83,7 +86,12 @@ public:
     void                ClearTextInfo(int32 start = -1, int32 end = INT32_MAX);
 
     int                 Parse(char* text, int32 size);
-    map<int32, markup_stack*>* GetMarkupMap();
+    markup_map*         GetMarkupMap();
+
+    /**
+     * looks up nearest position in the text markup map
+     */
+    markup_map_iter     GetNearestMarkupMapIter(int32 offset);
     /**
      * returns the text metadata stack at or near the given offset and optionally returns the effective offset.
      */
@@ -97,7 +105,8 @@ public:
                                          bool returnStack = false,
                                          bool unique = false);
 
-    markup_stack*       GetOutlineAt(int32 offset);
+    outline_map*        GetOutlineAt(int32 offset);
+
     static BMessage*    GetDetailForBlockType(MD_BLOCKTYPE type, void* detail);
     static BMessage*    GetDetailForSpanType(MD_SPANTYPE type, void* detail);
 
@@ -123,8 +132,8 @@ private:
      */
     text_lookup*        fTextLookup;
     int32               fTextSize;
-    void                InsertTextLookupShiftAt(int32 start, int32 delta);
-    int32               GetTextLookupShiftAt(int32 offset);
+    void                InsertTextShiftAt(int32 start, int32 delta);
+    int32               GetTextShiftAt(int32 offset);
     bool                FindTextData(const text_data* data, map<MD_BLOCKTYPE, text_data*> blocks, map<MD_SPANTYPE, text_data*>  spans);
 
     // callback functions
@@ -142,5 +151,5 @@ private:
 
     // helper
     static const char*  attr_to_str(MD_ATTRIBUTE data);
-    static bool         IsOutlineItem(text_data *data);
+    static const char*  GetOutlineItemName(text_data *data);
 };

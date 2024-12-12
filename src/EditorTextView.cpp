@@ -28,12 +28,8 @@ EditorTextView::EditorTextView(StatusBar *statusBar, BHandler *editorHandler)
 
     // setup fonts
     fTextFont = new BFont(be_plain_font);
-    // fTextFont->SetSize(be_plain_font->Size());
     fLinkFont = new BFont(be_plain_font);
-    // fLinkFont->SetFace(B_UNDERSCORE_FACE);
-    fLinkFont->SetSize(be_plain_font->Size());
     fCodeFont = new BFont(be_fixed_font);
-    // fCodeFont->SetSize(be_fixed_font->Size());
 
     // setup markdown syntax styler
     fMarkdownParser = new MarkdownParser();
@@ -135,19 +131,29 @@ void EditorTextView::UpdateStatus() {
 
 BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames) {
     int32 blockOffset;
-    markup_stack *markupStack = fMarkdownParser->GetOutlineAt(offset);
+    outline_map* outlineMap = fMarkdownParser->GetOutlineAt(offset);
 
     BMessage *outlineMsg = new BMessage('Tout');
 
-    if (markupStack == NULL || markupStack->empty()) {
+    if (outlineMap == NULL || outlineMap->empty()) {
         printf("no outline at offset %d\n", offset);
         return outlineMsg;
     }
 
-    printf("GetOutline: got markup stack at offset %d with %zu elements.\n", offset, markupStack->size());
+    printf("GetOutline: got outline map at offset %d with %zu elements.\n", offset, outlineMap->size());
 
-    for (auto item : *markupStack) {
-        switch (item->markup_class) {
+    for (auto item : *outlineMap) {
+        outlineMsg->AddPointer(item.first, item.second);
+    }
+    printf("got outline:\n");
+    outlineMsg->PrintToStream();
+
+    return outlineMsg;
+}
+
+/* GetDocumentOutline():
+
+switch (item->markup_class) {
             case MD_BLOCK_BEGIN: {
                 outlineMsg->AddUInt8("block:type", item->markup_type.block_type);
                 outlineMsg->AddMessage("block:detail", new BMessage(*item->detail));
@@ -185,12 +191,7 @@ BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames) {
                 continue;
             }
         }
-    }
-    printf("got outline:\n");
-    outlineMsg->PrintToStream();
-
-    return outlineMsg;
-}
+*/
 
 // interaction with MarkupStyler - should become its own class later
 void EditorTextView::MarkupText(int32 start, int32 end) {
@@ -237,14 +238,11 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
 
     // process all text map items in the parsed text
     for (auto info : *(fMarkdownParser->GetMarkupMap())) {
+        auto item = *info.second->begin();
         // reset for text-only parts
-        if (styleStack.empty()) {
-            auto item = *info.second->begin();
-            if (item->markup_class == MD_TEXT) {
-                printf("= style stack empty, resetting style.\n");
-                font = *fTextFont;
-                color = textColor;
-            }
+        if (info.second->size() == 1 && item->markup_class == MD_TEXT) {
+            font = *fTextFont;
+            color = textColor;
         }
         // process all markup stack items at this map offset
         for (auto stackItem : *info.second) {
@@ -291,6 +289,12 @@ void EditorTextView::StyleText(text_data* markupData,
         case MD_TEXT: {         // here the styles set before are actually applied to rendered text
             int32 start   = markupData->offset;
             int32 end     = start + markupData->length;
+
+            // reset for text-only parts
+            if (styleStack->size() == 0) {
+                *font = *fTextFont;
+                *color = textColor;
+            }
 
             SetTextStyle(markupData, font, color);
             SetFontAndColor(start, end, font, B_FONT_ALL, color);

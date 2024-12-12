@@ -60,31 +60,27 @@ void StatusBar::UpdateSelection(int32 selectionStart, int32 selectionEnd) {
 void StatusBar::UpdateOutline(const BMessage* outlineItems) {
     if (outlineItems == NULL || outlineItems->IsEmpty()) {
         fOutline->SetText("");
+        printf("no outline to show.\n");
         return;
     }
 
     BString outline;
     int32 *count;
 
-    for (int i = 0; i < outlineItems->CountNames(B_STRING_TYPE); i++) {
+    for (int i = 0; i < outlineItems->CountNames(B_POINTER_TYPE); i++) {
         char  *key[B_ATTR_NAME_LENGTH];
-        status_t result = outlineItems->GetInfo(B_STRING_TYPE, i, key, NULL, count);
+        type_code type;
+        status_t result = outlineItems->GetInfo(B_POINTER_TYPE, i, key, &type, NULL);
         if (result != B_OK) {
             printf("error processing text outline: %s\n", strerror(result));
             fOutline->SetText("???");
             return;
         }
-        for (int j = 0; j < *count ; j++) {
-            if (j > 0) {
-                // add separator
-                outline << " > ";
-            }
-            outline << outlineItems->GetString(*key, j, "");
-        }
         if (i > 0) {
             // add separator
             outline << " > ";
         }
+        outline << *key;
     }
     printf("outline: %s\n", outline.String());
     fOutline->SetText(outline.String());

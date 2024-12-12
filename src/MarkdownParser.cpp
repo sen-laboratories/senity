@@ -63,7 +63,7 @@ void MarkdownParser::ClearTextInfo(int32 start, int32 end) {
     for (auto mapItem : *fTextLookup->markupMap) {
         int32 offset = mapItem.first;
         if (offset >= start && offset <= end) {
-            mapItem.second->clear();                // first clear stack
+            mapItem.second->clear();                        // first clear stack
             fTextLookup->markupMap->erase(mapItem.first);   // then remove map item
         }
     }
@@ -75,84 +75,87 @@ int MarkdownParser::Parse(char* text, int32 size) {
     return md_parse(text, (uint) size, fParser, fTextLookup);
 }
 
-void MarkdownParser::InsertTextLookupShiftAt(int32 start, int32 delta) {
+void MarkdownParser::InsertTextShiftAt(int32 start, int32 delta) {
     // TODO
 }
 
-int32 MarkdownParser::GetTextLookupShiftAt(int32 offset) {
+int32 MarkdownParser::GetTextShiftAt(int32 offset) {
     // TODO
     return 0;
+}
+
+markup_map_iter MarkdownParser::GetNearestMarkupMapIter(int32 offset) {
+    markup_map_iter lowIter;
+    lowIter = fTextLookup->markupMap->lower_bound(offset);
+
+    // not first offset but found element
+    if (lowIter != fTextLookup->markupMap->begin() && lowIter != fTextLookup->markupMap->end()) {
+        lowIter = std::prev(lowIter);
+    }
+    return lowIter;
 }
 
 markup_stack* MarkdownParser::GetMarkupStackAt(int32 offset, int32* mapOffsetFound) {
     // search markup stack for nearest offset in search direction
     printf("searching nearest markup info stack for offset %d...\n", offset);
-    markup_stack* closestStack;
 
-    std::map<int32, markup_stack*>::iterator low;
-    low = fTextLookup->markupMap->lower_bound(offset);
-
-    // not first offset but found element
-    if (low != fTextLookup->markupMap->begin() && low != fTextLookup->markupMap->end()) {
-        low = std::prev(low);
-    }
+    auto low = GetNearestMarkupMapIter(offset);
     printf("found stack at nearest lower offset %d for offset %d\n", low->first, offset);
 
     if (mapOffsetFound != NULL) {
         *mapOffsetFound = low->first;
     }
-    closestStack = low->second;
 
-    return closestStack;
+    return low->second;
 }
 
-markup_stack* MarkdownParser::GetOutlineAt(int32 offset) {
-    int32 searchOffset = offset;
-    int32 foundOffset = 0;
-    bool  markupSlots[16];
-    bool  headerSlots[6];
-    markup_stack* stack;
+outline_map* MarkdownParser::GetOutlineAt(int32 offset) {
+    outline_map* outlineElements = new outline_map();
 
     // final stack holding all outline items
     markup_stack* resultStack = new markup_stack;
+    auto mapIter = GetNearestMarkupMapIter(offset);
+    if (mapIter == fTextLookup->markupMap->cend()) {
+        printf("no text info found for outline!\n");
+        return outlineElements;
+    }
+    bool search = true;
 
-    bool topLevelReached = false;
+    while (search && mapIter != fTextLookup->markupMap->begin()) {
+        auto stack = mapIter->second;
+        printf("GetOutlineAt @%d\n", mapIter->first);
 
-    while (!topLevelReached && searchOffset > 0) {
-        stack = GetMarkupBoundariesAt(searchOffset, &foundOffset, NULL, BLOCK, BEGIN, true, true);
-        printf("    GetOutlineAt %d: found text offset %u..\n", searchOffset, foundOffset);
-        searchOffset = foundOffset;
-        // add all outline items found to result stack
         for (auto item : *stack) {
-            if (!IsOutlineItem(item)) {
+            const char* outlineElement = GetOutlineItemName(item);
+            if (outlineElement == NULL) {
                 continue;
             }
-            MD_BLOCKTYPE blockType = item->markup_type.block_type;
-            if (markupSlots[blockType]) {
-                if (blockType == MD_BLOCK_H) {
-                    if (item->detail != NULL) {
-                        uint8 level = item->detail->GetUInt8("level", 1);   // bail out if level is bogus
-                        if (level == 1) {
-                            topLevelReached = true;
-                            printf("    found top level @%d.\n", foundOffset);
-                            break;
-                        }
-                        if (headerSlots[level - 1]) {
-                            continue;   // already captured that heeader level
-                        }
-                        headerSlots[level - 1] = true;
-                    }
-                } else {
-                    continue;
+            if (outlineElements->find(outlineElement) == outlineElements->cend()) {
+                if (item->markup_class == MD_BLOCK_BEGIN) {
+                    outlineElements->insert({outlineElement, item});
+                }
+                if (strncmp(outlineElement, "H1", 2) == 0) {
+                    printf("top level H1 reached, done.\n");
+                    search = false;
+                    break;
+                }
+            } else {
+                // check for closed blocks and remove from hierarchical outline
+                if (item->markup_class == MD_BLOCK_END) {
+                    // remove closed block from outline
+                    printf("removing closed block element %s\n", outlineElement);
+                    outlineElements->erase(outlineElement);
                 }
             }
-            markupSlots[blockType] = true;
-            resultStack->push_back(item);
         }
+        mapIter--;
     }
-    printf("GetOutlineAt %d: found outline root offset %u and %zu outline items.\n", offset, foundOffset, resultStack->size());
+    if (search) {
+        printf("Warning: reached start of document without finding proper outline root!\n");
+    }
+    printf("GetOutlineAt %d: found %zu outline items.\n", offset, resultStack->size());
 
-    return resultStack;
+    return outlineElements;
 }
 
 // TODO: this is a demi-God method, maybe split search-to-begin and search-to-end
@@ -449,6 +452,9 @@ BMessage* MarkdownParser::GetDetailForBlockType(MD_BLOCKTYPE type, void* detail)
             auto detailData = reinterpret_cast<MD_BLOCK_CODE_DETAIL*>(detail);
             detailMsg->AddString("info", attr_to_str(detailData->info));
             detailMsg->AddString("lang", attr_to_str(detailData->lang));
+            BString fence;
+            fence << detailData->fence_char;
+            detailMsg->AddString("fenceChar", fence.String());
             break;
         }
         case MD_BLOCK_H: {
@@ -461,6 +467,48 @@ BMessage* MarkdownParser::GetDetailForBlockType(MD_BLOCKTYPE type, void* detail)
             detailMsg->AddUInt8("headRowCount", detailData->head_row_count);
             detailMsg->AddUInt8("bodyRowCount", detailData->body_row_count);
             detailMsg->AddUInt8("colCount", detailData->col_count);
+            break;
+        }
+        case MD_BLOCK_TD: {
+            auto detailData = reinterpret_cast<MD_BLOCK_TD_DETAIL*>(detail);
+            const char* alignment;
+            switch(detailData->align) {
+                case MD_ALIGN_LEFT:
+                    alignment = "left";
+                case MD_ALIGN_CENTER:
+                    alignment = "center";
+                case MD_ALIGN_RIGHT:
+                    alignment = "right";
+                default:
+                    alignment = "default";
+            }
+            detailMsg->AddString("align", alignment);
+            break;
+        }
+        case MD_BLOCK_OL: {
+            auto detailData = reinterpret_cast<MD_BLOCK_OL_DETAIL*>(detail);
+            detailMsg->AddUInt8("start", detailData->start);
+            detailMsg->AddBool("tight", detailData->is_tight);
+            BString delimiter;
+            delimiter << detailData->mark_delimiter;
+            detailMsg->AddString("delimiter", delimiter.String());
+            break;
+        }
+        case MD_BLOCK_UL: {
+            auto detailData = reinterpret_cast<MD_BLOCK_UL_DETAIL*>(detail);
+            detailMsg->AddBool("tight", detailData->is_tight);
+            BString mark;
+            mark << detailData->mark;
+            detailMsg->AddString("mark", mark.String());
+            break;
+        }
+        case MD_BLOCK_LI: {
+            auto detailData = reinterpret_cast<MD_BLOCK_LI_DETAIL*>(detail);
+            detailMsg->AddBool("task", detailData->is_task);
+            BString taskMark;
+            taskMark << detailData->task_mark;
+            detailMsg->AddString("taskMark", taskMark.String());
+            detailMsg->AddUInt8("taskMarkOffset", detailData->task_mark_offset);
             break;
         }
         default: {
@@ -495,7 +543,7 @@ BMessage* MarkdownParser::GetDetailForSpanType(MD_SPANTYPE type, void* detail) {
             break;
         }
         default: {
-            printf("skipping unsupported/empty span type %s.\n", span_type_name[type]);
+            printf("skipping span type w/o detail: %s.\n", span_type_name[type]);
         }
     }
 
@@ -519,18 +567,35 @@ const char* MarkdownParser::attr_to_str(MD_ATTRIBUTE data) {
     return (new BString(data.text, data.size))->String();
 }
 
-bool MarkdownParser::IsOutlineItem(text_data *data){
-    if (data->markup_class != MD_BLOCK_BEGIN) {
-        return false;
+const char* MarkdownParser::GetOutlineItemName(text_data *data){
+    if (data->markup_class != MD_BLOCK_BEGIN && data->markup_class != MD_BLOCK_END) {
+        return NULL;
     }
     switch (data->markup_type.block_type) {
-        case MD_BLOCK_DOC:
-             MD_BLOCK_H:
-             MD_BLOCK_UL:
-             MD_BLOCK_OL:
-             MD_BLOCK_TABLE:
-                return true;
+        case MD_BLOCK_DOC: return "DOC";
+        case MD_BLOCK_H: {
+            if (data->detail != NULL) {
+                uint8 level = data->detail->GetUInt8("level", 1);   // default if level is bogus, should always be there
+                BString name("H");
+                name << level;
+
+                return (new BString(name))->String();
+            }
+            return "H?";    // see above, just a failsafe fallback to indicate a bogus header
+        }
+        case MD_BLOCK_CODE: return "CODE";
+        case MD_BLOCK_HTML: return "HTML";
+        case MD_BLOCK_P: return "P";
+        case MD_BLOCK_QUOTE: return "Q";
+        case MD_BLOCK_UL: return "UL";
+        case MD_BLOCK_OL: return "OL";
+        case MD_BLOCK_TABLE: return "TABLE";
+        case MD_BLOCK_THEAD: return "THEAD";
+        case MD_BLOCK_TBODY: return "TBODY";
+        case MD_BLOCK_TR: return "TR";
+        case MD_BLOCK_TH: return "TH";
+        case MD_BLOCK_TD: return "TD";
         default:
-            return false;
+            return NULL;
     }
 }
