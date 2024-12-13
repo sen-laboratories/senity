@@ -264,8 +264,6 @@ markup_stack* MarkdownParser::GetMarkupBoundariesAt(int32 offset, int32* start, 
 
         search = true;
         while (search && mapIter != fTextLookup->markupMap->end()) {
-            mapIter++;
-
             // process markup stack at next map position
             markup_stack* markupStack = mapIter->second;
             for (auto stackItem : *markupStack) {
@@ -303,6 +301,7 @@ markup_stack* MarkdownParser::GetMarkupBoundariesAt(int32 offset, int32* start, 
                 }
 
             }
+            mapIter++;
         }
     }
     if (end != NULL)

@@ -51,6 +51,7 @@ private:
     void            SetSpanStyle(text_data* markupInfo, BFont* font, rgb_color* color);
     void            SetTextStyle(text_data* markupInfo, BFont *font, rgb_color *color);
     BMessage*       GetOutlineAt(int32 offset, bool withNames = false);
+    BMessage*       GetDocumentOutline(bool withNames = false, bool withDetails = false);
     void            UpdateStatus();
 
     BMessenger*     fMessenger;

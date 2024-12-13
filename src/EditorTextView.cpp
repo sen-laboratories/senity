@@ -151,47 +151,68 @@ BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames) {
     return outlineMsg;
 }
 
-/* GetDocumentOutline():
+BMessage* EditorTextView::GetDocumentOutline(bool withDetails, bool withNames) {
+    BMessage *outlineMsg = new BMessage('Tout');
+    bool addOffset = false;
 
-switch (item->markup_class) {
-            case MD_BLOCK_BEGIN: {
-                outlineMsg->AddUInt8("block:type", item->markup_type.block_type);
-                outlineMsg->AddMessage("block:detail", new BMessage(*item->detail));
-                if (withNames) {
-                    BString blockName = MarkdownParser::GetBlockTypeName(item->markup_type.block_type);
-                    // for Header, add level like in HTML (H1...H6)
-                    if (item->markup_type.block_type == MD_BLOCK_H) {
-                        uint8 level = item->detail->GetUInt8("level", 0);
-                        blockName << level;
+    for (auto mapItem : *(fMarkdownParser->GetMarkupMap())) {
+        for (auto item : *mapItem.second) {
+            switch (item->markup_class) {
+                case MD_BLOCK_BEGIN: {
+                    outlineMsg->AddUInt8("block:type", item->markup_type.block_type);
+                    if (withDetails) {
+                        outlineMsg->AddMessage("block:detail", new BMessage(*item->detail));
                     }
-                    outlineMsg->AddString("block:name", blockName.String());
+                    if (withNames) {
+                        BString blockName = MarkdownParser::GetBlockTypeName(item->markup_type.block_type);
+                        // for Header, add level like in HTML (H1...H6)
+                        if (item->markup_type.block_type == MD_BLOCK_H) {
+                            uint8 level = item->detail->GetUInt8("level", 0);
+                            blockName << level;
+                        }
+                        outlineMsg->AddString("block:name", blockName.String());
+                    }
+                    addOffset = true;
+                    break;
                 }
-                break;
-            }
-            case MD_SPAN_BEGIN: {
-                outlineMsg->AddUInt8("span:type", item->markup_type.span_type);
-                outlineMsg->AddMessage("span:detail", new BMessage(*item->detail));
-                if (withNames) {
-                    outlineMsg->AddString("span:name", MarkdownParser::GetSpanTypeName(item->markup_type.span_type));
+                case MD_SPAN_BEGIN: {
+                    outlineMsg->AddUInt8("span:type", item->markup_type.span_type);
+                    if (withDetails) {
+                        outlineMsg->AddMessage("span:detail", new BMessage(*item->detail));
+                    }
+                    if (withNames) {
+                        outlineMsg->AddString("span:name", MarkdownParser::GetSpanTypeName(item->markup_type.span_type));
+                    }
+                    addOffset = true;
+                    break;
                 }
-                break;
-            }
-            case MD_TEXT: {
-                outlineMsg->AddUInt8("text:type", item->markup_type.text_type);
-                // MD4C returns no detail for TEXT but let's stay generic here
-                outlineMsg->AddMessage("text:detail", new BMessage());
-                if (withNames) {
-                    outlineMsg->AddString("text:name", MarkdownParser::GetTextTypeName(item->markup_type.text_type));
+                case MD_TEXT: {
+                    outlineMsg->AddUInt8("text:type", item->markup_type.text_type);
+                    // MD4C returns no detail for TEXT but let's stay generic here
+                    if (withDetails) {
+                        outlineMsg->AddMessage("text:detail", new BMessage());
+                    }
+                    if (withNames) {
+                        outlineMsg->AddString("text:name", MarkdownParser::GetTextTypeName(item->markup_type.text_type));
+                    }
+                    addOffset = true;
+                    break;
                 }
-                break;
+                default: {
+                    // noop
+                    printf("ignoring markup type %s\n", MarkdownParser::GetMarkupClassName(item->markup_class));
+                    break;
+                }
             }
-            default: {
-                // noop
-                printf("ignoring markup type %s\n", MarkdownParser::GetMarkupClassName(item->markup_class));
-                continue;
+            if (addOffset) {
+                // reference to location inside text
+                outlineMsg->AddInt32("offset", item->offset);
+                addOffset = false;
             }
         }
-*/
+    }
+    return outlineMsg;
+}
 
 // interaction with MarkupStyler - should become its own class later
 void EditorTextView::MarkupText(int32 start, int32 end) {
@@ -249,6 +270,9 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
             StyleText(stackItem, &styleStack, &font, &color);
         }
     }
+
+    printf("DocumentOutline:\n");
+    GetDocumentOutline(true)->PrintToStream();
 }
 
 void EditorTextView::StyleText(text_data* markupData,
