@@ -1,23 +1,29 @@
-name: C/C++ CI
+name: Build senity
 
 on:
-  push:
-    branches: [ "main" ]
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
   pull_request:
-    branches: [ "main" ]
-
-jobs:
+    branches: [ main ]
+    paths:
+      - '**.cpp'
+      - '**.h'
+jobs:  
   build:
-
-    runs-on: ubuntu-latest
-
+    name: 'build on Haiku'
+    runs-on: 'ubuntu-latest'
+    container: 'docker.io/hectorm/qemu-haiku:latest'
     steps:
-    - uses: actions/checkout@v4
-    - name: configure
-      run: ./configure
-    - name: make
-      run: make
-    - name: make check
-      run: make check
-    - name: make distcheck
-      run: make distcheck
+    - name: 'Wait until the VM is ready'
+      run: 'container-init & timeout 600 vmshell exit 0'
+    - name: 'Install packages'
+      run: 'vmshell pkgman install -y gcc haiku_devel make makefile_engine libgit2_1.8_devel lexilla_devel'
+    - name: 'Reboot VM'
+      run: 'vmshell sync; sv force-restart qemu ||:; timeout 600 vmshell exit 0'
+    - name: 'Checkout project'
+      uses: actions/checkout@v4
+    - name: 'Copy project to VM'
+      run: 'vmshell mkdir ./src/; tar -cf - ./ | vmshell tar -xf - -C ./src/'
+    - name: 'Build project'
+      run: 'vmshell make BUILDHOME=\`finddir B_SYSTEM_DEVELOP_DIRECTORY\` -C ./src/'
