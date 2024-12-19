@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <Messenger.h>
+#include <Region.h>
 #include <ScrollView.h>
 #include <stdio.h>
 
@@ -34,6 +35,8 @@ EditorTextView::EditorTextView(StatusBar *statusBar, BHandler *editorHandler)
     // setup markdown syntax styler
     fMarkdownParser = new MarkdownParser();
     fMarkdownParser->Init();
+
+    fTextHighlights = new map<int32, text_highlight*>();
 }
 
 EditorTextView::~EditorTextView() {
@@ -87,7 +90,7 @@ void EditorTextView::MouseDown(BPoint where) {
         fMarkdownParser->GetMarkupBoundariesAt(offset, &begin, &end, BLOCK, BOTH);
         if (begin >= 0 && end > 0) {
             printf("highlighting text from %d - %d\n", begin, end);
-            Highlight(begin, end);
+            Highlight(begin, end, NULL, &linkColor);
         } else {
             printf("got no boundaries for offset %d!\n", offset);
         }
@@ -114,6 +117,92 @@ void EditorTextView::MouseDown(BPoint where) {
 
 void EditorTextView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessage) {
     BTextView::MouseMoved(where, code, dragMessage);
+}
+
+void EditorTextView::Draw(BRect updateRect) {
+    BTextView::Draw(updateRect);
+
+    // redraw text highlights if any inside updateRect
+
+    // TODO: optimize later via smart map lookup
+    // int32 updateOffset = OffsetAt(updateRect.LeftTop());
+    // auto highlight = fTextHighlights->find(updateOffset); //todo: get nearest offsets to updateRect boundaries
+
+    printf("redrawing text highlights, scanning %zu highlights...\n", fTextHighlights->size());
+
+    for (auto highlight : *fTextHighlights) {
+        auto textHighlight = highlight.second;
+        if (textHighlight->region->Intersects(updateRect)) {
+            printf("redraw highlight at offset %d...\n", textHighlight->startOffset);
+            Highlight(
+                textHighlight->startOffset,
+                textHighlight->endOffset,
+                textHighlight->fgColor,
+                textHighlight->bgColor);
+        }
+    }
+}
+
+void
+EditorTextView::Highlight(int32 startOffset, int32 endOffset, const rgb_color *fgColor, const rgb_color *bgColor)
+{
+	// pin offsets at reasonable values
+	if (startOffset < 0)
+		startOffset = 0;
+	else if (startOffset > TextLength())
+		startOffset = TextLength() - 1;
+	if (endOffset < 0)
+		endOffset = 0;
+	else if (endOffset > TextLength())
+		endOffset = TextLength() - 1;
+
+	if (startOffset >= endOffset)
+		return;
+
+    printf("Highlight: from %d - %d\n", startOffset, endOffset);
+    BPoint textLoc = PointAt(startOffset);
+
+	BRegion selRegion;
+	GetTextRegion(startOffset, endOffset, &selRegion);
+
+    auto savedHighlight = fTextHighlights->find(startOffset);
+    if (savedHighlight == fTextHighlights->end()) {
+        printf("Highlight: store new highlight in map...\n");
+
+        // add to saved highlights for redraw
+        text_highlight *highlight = new text_highlight;
+        highlight->startOffset = startOffset;
+        highlight->endOffset   = endOffset;
+        highlight->region      = new BRegion(selRegion);
+        highlight->fgColor     = fgColor;
+        highlight->bgColor     = bgColor;
+
+        fTextHighlights->insert({startOffset, highlight});
+    }   // else it's just a redraw (TODO: support updating highlights)
+
+    // provide a UTF-8 aware char buffer for GetText()
+    int32 len = endOffset - startOffset + 1;
+    BString textStr("", len);
+    char* text = textStr.LockBuffer(len);
+
+    GetText(startOffset, len, text);
+    textStr.UnlockBuffer();
+
+	SetDrawingMode(B_OP_BLEND);
+    rgb_color hiCol = HighColor();
+    rgb_color loCol = LowColor();
+
+    // draw background label
+    SetLowColor(bgColor != NULL ? *bgColor : LowColor());
+	FillRegion(&selRegion, B_SOLID_LOW);
+
+    // draw foreground label text
+    SetHighColor(fgColor != NULL ? *fgColor : textColor);
+	DrawString(text, textLoc);
+
+    SetLowColor(loCol);
+    SetHighColor(hiCol);
+	SetDrawingMode(B_OP_COPY);
 }
 
 void EditorTextView::UpdateStatus() {
@@ -242,8 +331,10 @@ void EditorTextView::MarkupText(int32 start, int32 end) {
     // clear the map section affected by the parser update
     fMarkdownParser->ClearTextInfo(start, end);
 
-    char text[size + 1];
+    BString textStr("", size);
+    char* text = textStr.LockBuffer(size);
     GetText(blockStart, size, text);
+    textStr.UnlockBuffer();
 
     // perform a partial or complete update of the text map
     fMarkdownParser->Parse(text, size);

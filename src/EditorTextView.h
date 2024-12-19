@@ -24,12 +24,21 @@ enum message_codes {
     TEXTVIEW_POSITION_UPDATED = 'Tpos'
 };
 
+typedef struct text_highlight {
+    int32 startOffset;
+    int32 endOffset;
+    BRegion          *region;
+    const rgb_color *fgColor;
+    const rgb_color *bgColor;
+} text_highlight;
+
 #define TEXTVIEW_OFFSET = "offset";
 
 public:
                     EditorTextView(StatusBar *statusView, BHandler *editorHandler);
     virtual         ~EditorTextView();
 
+    virtual void    Draw(BRect updateRect);
     virtual void    SetText(BFile *file, int32 offset, size_t size);
     virtual void    SetText(const char* text, const text_run_array* runs = NULL);
 
@@ -41,6 +50,7 @@ public:
     virtual	void	MouseDown(BPoint where);
     virtual	void    MouseMoved(BPoint where, uint32 code,
                                const BMessage* dragMessage);
+    void            Highlight(int32 startOffset, int32 endOffset, const rgb_color *fgColor = NULL, const rgb_color *bgColor = NULL);
 
 private:
     void            MarkupText(int32 start, int32 end);
@@ -60,4 +70,6 @@ private:
     BFont*          fTextFont;
     BFont*          fLinkFont;
     BFont*          fCodeFont;
+
+    map<int32, text_highlight*> *fTextHighlights;
 };

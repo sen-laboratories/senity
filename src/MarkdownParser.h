@@ -99,10 +99,10 @@ public:
     /**
     * search for block or span boundaries to capture block/span markup info and collect them into text_data stack.
     */
-    markup_stack*       GetMarkupBoundariesAt(int32 offset, int32* start, int32* end,
+    status_t            GetMarkupBoundariesAt(int32 offset, int32* start, int32* end,
                                          BOUNDARY_TYPE boundaryType = BLOCK,
                                          SEARCH_DIRECTION searchType = BOTH,
-                                         bool returnStack = false,
+                                         markup_stack *resultStack = NULL,
                                          bool unique = false);
 
     outline_map*        GetOutlineAt(int32 offset);
