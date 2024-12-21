@@ -4,6 +4,7 @@
  */
 
 #include <assert.h>
+#include <GradientLinear.h>
 #include <Messenger.h>
 #include <Region.h>
 #include <ScrollView.h>
@@ -160,7 +161,6 @@ EditorTextView::Highlight(int32 startOffset, int32 endOffset, const rgb_color *f
 		return;
 
     printf("Highlight: from %d - %d\n", startOffset, endOffset);
-    BPoint textLoc = PointAt(startOffset);
 
 	BRegion selRegion;
 	GetTextRegion(startOffset, endOffset, &selRegion);
@@ -180,25 +180,20 @@ EditorTextView::Highlight(int32 startOffset, int32 endOffset, const rgb_color *f
         fTextHighlights->insert({startOffset, highlight});
     }   // else it's just a redraw (TODO: support updating highlights)
 
-    // provide a UTF-8 aware char buffer for GetText()
-    int32 len = endOffset - startOffset + 1;
-    BString textStr("", len);
-    char* text = textStr.LockBuffer(len);
-
-    GetText(startOffset, len, text);
-    textStr.UnlockBuffer();
-
 	SetDrawingMode(B_OP_BLEND);
     rgb_color hiCol = HighColor();
     rgb_color loCol = LowColor();
+    rgb_color highlightFgColor = (fgColor != NULL ? *fgColor : textColor);
+    rgb_color highlightBgColor = (bgColor != NULL ? *bgColor  : loCol);
 
-    // draw background label
-    SetLowColor(bgColor != NULL ? *bgColor : LowColor());
-	FillRegion(&selRegion, B_SOLID_LOW);
+    SetHighColor(highlightFgColor);
+    SetLowColor(highlightFgColor);
 
-    // draw foreground label text
-    SetHighColor(fgColor != NULL ? *fgColor : textColor);
-	DrawString(text, textLoc);
+	BGradientLinear gradient(0, 0, selRegion.RectAt(0).right, selRegion.RectAt(0).bottom);
+	gradient.AddColor(highlightFgColor, 0);
+	gradient.AddColor(highlightBgColor, 255);
+
+	FillRegion(&selRegion, gradient);   //B_SOLID_LOW
 
     SetLowColor(loCol);
     SetHighColor(hiCol);
