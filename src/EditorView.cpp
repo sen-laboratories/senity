@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include "EditorView.h"
+#include "Messages.h"
 
 EditorView::EditorView() : BView("editor_view", B_WILL_DRAW | B_PULSE_NEEDED | B_FRAME_EVENTS) {
 
@@ -28,6 +29,25 @@ EditorView::EditorView() : BView("editor_view", B_WILL_DRAW | B_PULSE_NEEDED | B
 
 EditorView::~EditorView() {
     RemoveSelf();
+}
+
+void EditorView::MessageReceived(BMessage* message) {
+    switch (message->what) {
+        case MSG_HIGHLIGHT_TYPE:
+        {
+            printf("highlight type:\n");
+            const char* label = message->GetString(MSG_PROP_LABEL);
+            if (label != NULL) {
+                printf("highlight with label %s\n", label);
+            }
+            break;
+        }
+        default:
+        {
+            BView::MessageReceived(message);
+            break;
+        }
+    }
 }
 
 void EditorView::SetText(BFile* file, size_t size) {

@@ -17,6 +17,8 @@
 
 #include <cstdio>
 
+#include "Messages.h"
+
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "Window"
 
@@ -66,13 +68,14 @@ MainWindow::~MainWindow()
     delete fEditorView;
 }
 
-void
-MainWindow::MessageReceived(BMessage* message)
+void MainWindow::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
 		case B_SIMPLE_DATA:
 		case B_REFS_RECEIVED:
 		{
+            printf("handing simple data/refs received msg.\n");
+
 			entry_ref ref;
             status_t  result;
 
@@ -110,7 +113,7 @@ MainWindow::MessageReceived(BMessage* message)
 				BEntry entry(&directory, name);
 				BPath path = BPath(&entry);
 
-				printf("Save path: %s\n", path.Path());
+				printf("would save to path: %s\n", path.Path());
 			}
 		} break;
 
@@ -130,8 +133,20 @@ MainWindow::MessageReceived(BMessage* message)
 			fSavePanel->Show();
 		} break;
 
+        case MSG_HIGHLIGHT_TYPE:
+        {
+            printf("MSG_HIGHLIGHT_TYPE received in MainWindow.\n");
+            const char* label = message->GetString(MSG_PROP_LABEL);
+            if (label != NULL) {
+                printf("highlight with label %s\n", label);
+            }
+        } break;
+
 		default:
 		{
+            printf("handing over unsupported msg:\n");
+            message->PrintToStream();
+
 			BWindow::MessageReceived(message);
 			break;
 		}

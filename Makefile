@@ -34,6 +34,7 @@ SRCS =  src/App.cpp \
         src/MarkdownParser.cpp \
         src/EditorView.cpp \
         src/EditorTextView.cpp \
+        src/MessageUtil.cpp \
         src/StatusBar.cpp
 
 #	Specify the resource definition files to use. Full or relative paths can be

@@ -17,6 +17,8 @@ class EditorView : public BView {
 public:
                     EditorView();
     virtual         ~EditorView();
+    virtual void    MessageReceived(BMessage* message);
+
     void            SetText(BFile *file, size_t size);
 
 private:

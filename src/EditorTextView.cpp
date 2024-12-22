@@ -3,6 +3,7 @@
  * All rights reserved. Distributed under the terms of the MIT license.
  */
 
+#include <MenuItem.h>
 #include <assert.h>
 #include <GradientLinear.h>
 #include <Messenger.h>
@@ -11,6 +12,8 @@
 #include <stdio.h>
 
 #include "EditorTextView.h"
+#include "Messages.h"
+#include "MessageUtil.h"
 
 using namespace std;
 
@@ -20,6 +23,7 @@ EditorTextView::EditorTextView(StatusBar *statusBar, BHandler *editorHandler)
 	SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
 	SetLowUIColor(ViewUIColor());
 
+    MakeEditable(false); //TODO: add edit support!
     SetStylable(true);
     SetDoesUndo(true);
     SetWordWrap(false);
@@ -38,12 +42,42 @@ EditorTextView::EditorTextView(StatusBar *statusBar, BHandler *editorHandler)
     fMarkdownParser->Init();
 
     fTextHighlights = new map<int32, text_highlight*>();
+    fContextMenu = NULL;
 }
 
 EditorTextView::~EditorTextView() {
     RemoveSelf();
+
     delete fMarkdownParser;
+    delete fTextFont;
+    delete fLinkFont;
+    delete fCodeFont;
+
+    fTextHighlights->clear();
+    delete fTextHighlights;
+
+    if (fContextMenu != NULL)
+        delete fContextMenu;
+
     delete fMessenger;
+}
+
+void EditorTextView::MessageReceived(BMessage* message) {
+    switch (message->what) {
+        case MSG_HIGHLIGHT_TYPE:
+        {
+            printf("highlight type:\n");
+            const char* label = message->GetString(MSG_PROP_LABEL);
+            if (label != NULL) {
+                printf("highlight with label %s\n", label);
+            }
+            break;
+        }
+        default:
+        {
+            BTextView::MessageReceived(message);
+        }
+    }
 }
 
 void EditorTextView::SetText(const char* text, const text_run_array* runs) {
@@ -80,39 +114,94 @@ void EditorTextView::KeyDown(const char* bytes, int32 numBytes) {
 }
 
 void EditorTextView::MouseDown(BPoint where) {
-    BTextView::MouseDown(where);
-    UpdateStatus();
     if (TextLength() == 0) return;
 
-    int32 offset = OffsetAt(where);
-    if ((modifiers() & B_COMMAND_KEY) != 0) {
-        // highlight block
-        int32 begin, end;
-        fMarkdownParser->GetMarkupBoundariesAt(offset, &begin, &end, BLOCK, BOTH);
-        if (begin >= 0 && end > 0) {
-            printf("highlighting text from %d - %d\n", begin, end);
-            Highlight(begin, end, NULL, &linkColor);
+    BPoint absoluteLoc;
+    uint32 buttons;
+    GetMouse(&absoluteLoc, &buttons);
+
+    if (buttons & B_PRIMARY_MOUSE_BUTTON) {
+        BTextView::MouseDown(where);
+        UpdateStatus();
+        int32 offset = OffsetAt(where);
+
+        if ((modifiers() & B_COMMAND_KEY) != 0) {
+            // highlight block
+            int32 begin, end;
+            fMarkdownParser->GetMarkupBoundariesAt(offset, &begin, &end, BLOCK, BOTH);
+            if (begin >= 0 && end > 0) {
+                printf("highlighting text from %d - %d\n", begin, end);
+                Highlight(begin, end, NULL, &linkColor);
+            } else {
+                printf("got no boundaries for offset %d!\n", offset);
+            }
         } else {
-            printf("got no boundaries for offset %d!\n", offset);
+            auto data = fMarkdownParser->GetMarkupStackAt(offset);
+            BString stack;
+            for (auto item : *data) {
+                stack << "@" << item->offset << ": " <<
+                MarkdownParser::GetMarkupClassName(item->markup_class) << " [" <<
+                (item->markup_class == MD_BLOCK_BEGIN || item->markup_class == MD_BLOCK_END ?
+                    MarkdownParser::GetBlockTypeName(item->markup_type.block_type) :
+                        (item->markup_class == MD_SPAN_BEGIN || item->markup_class == MD_SPAN_END ?
+                            MarkdownParser::GetSpanTypeName(item->markup_type.span_type) :
+                                MarkdownParser::GetTextTypeName(item->markup_type.text_type)    // must be TEXT
+                        )
+                ) <<
+                "]";
+                if (item != *data->end())
+                    stack << " | ";
+            }
+            printf("markup stack at offset %d (%zu items): %s\n", offset, data->size(), stack.String());
         }
-    } else {
-        auto data = fMarkdownParser->GetMarkupStackAt(offset);
-        BString stack;
-        for (auto item : *data) {
-            stack << "@" << item->offset << ": " <<
-            MarkdownParser::GetMarkupClassName(item->markup_class) << " [" <<
-            (item->markup_class == MD_BLOCK_BEGIN || item->markup_class == MD_BLOCK_END ?
-                MarkdownParser::GetBlockTypeName(item->markup_type.block_type) :
-                    (item->markup_class == MD_SPAN_BEGIN || item->markup_class == MD_SPAN_END ?
-                        MarkdownParser::GetSpanTypeName(item->markup_type.span_type) :
-                            MarkdownParser::GetTextTypeName(item->markup_type.text_type)    // must be TEXT
-                    )
-            ) <<
-            "]";
-            if (item != *data->end())
-                stack << " | ";
+    } else if (buttons & B_SECONDARY_MOUSE_BUTTON) {
+        // show context menu
+        int32 startSelection, endSelection;
+        GetSelection(&startSelection, &endSelection);
+
+        if (fContextMenu != NULL)
+            delete fContextMenu;
+        fContextMenu = new BPopUpMenu("editorContextMenu", false, false);
+
+        BMenu *contextMenu;
+        if (startSelection != endSelection) {   // add label to selection
+            contextMenu = fContextMenu;      // no further menu level necessary
+        } else {
+            contextMenu = new BMenu("Insert");  // insert a new label
+            fContextMenu->AddItem(contextMenu);
         }
-        printf("markup stack at offset %d (%zu items): %s\n", offset, data->size(), stack.String());
+        // TODO: make this dynamically configurable and change to proper MIME types later
+        // BMenuItem *contextItem = new BMenuItem("Person", MessageUtil::CreateBMessage(
+            // new BMessage(MSG_HIGHLIGHT_TYPE), "label", "Person"), '1');
+        BMessage *entityMsg = new BMessage(MSG_HIGHLIGHT_TYPE);
+        entityMsg->AddString("label", "Person");
+        BMenuItem *contextItem = new BMenuItem("Person", entityMsg, '1');
+        contextMenu->AddItem(contextItem);
+
+        contextItem = new BMenuItem("Location", MessageUtil::CreateBMessage(
+            new BMessage(MSG_HIGHLIGHT_TYPE), "label", "Location"), '2');
+        contextMenu->AddItem(contextItem);
+
+        contextItem = new BMenuItem("Date", MessageUtil::CreateBMessage(
+            new BMessage(MSG_HIGHLIGHT_TYPE), "label", "Date"), '3');
+        contextMenu->AddItem(contextItem);
+
+        contextMenu->AddSeparatorItem();    // now come the meta labels
+
+        contextItem = new BMenuItem("Category", MessageUtil::CreateBMessage(
+            new BMessage(MSG_HIGHLIGHT_TYPE), "label", "Category"), '4');
+        contextMenu->AddItem(contextItem);
+
+        contextItem = new BMenuItem("Topic", MessageUtil::CreateBMessage(
+            new BMessage(MSG_HIGHLIGHT_TYPE), "label", "Topic"), '5');
+        contextMenu->AddItem(contextItem);
+
+        contextItem = new BMenuItem("Tag", MessageUtil::CreateBMessage(
+            new BMessage(MSG_HIGHLIGHT_TYPE), "label", "Tag"), '6');
+        contextMenu->AddItem(contextItem);
+
+        ConvertToScreen(&where);
+        fContextMenu->Go(where, false, false, true);
     }
 }
 
@@ -567,3 +656,11 @@ void EditorTextView::SetTextStyle(text_data* markupInfo, BFont *font, rgb_color 
             break;
     }
 }
+
+// utility functions
+void EditorTextView::BuildContextMenu() {
+}
+
+void EditorTextView::BuildContextSelectionMenu() {
+}
+

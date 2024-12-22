@@ -4,7 +4,6 @@
  */
 
 #include "MarkdownParser.h"
-
 #include <String.h>
 #include <cassert>
 #include <stdio.h>

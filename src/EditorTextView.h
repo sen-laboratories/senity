@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <PopUpMenu.h>
 #include <stack>
 #include <SupportDefs.h>
 #include <TextView.h>
@@ -18,11 +19,6 @@ const rgb_color textColor   = ui_color(B_DOCUMENT_TEXT_COLOR);
 const rgb_color headerColor = ui_color(B_CONTROL_HIGHLIGHT_COLOR);  // todo: use tinting
 
 class EditorTextView : public BTextView {
-
-//todo move to separate file later
-enum message_codes {
-    TEXTVIEW_POSITION_UPDATED = 'Tpos'
-};
 
 typedef struct text_highlight {
     int32 startOffset;
@@ -46,6 +42,8 @@ public:
 	virtual	void    InsertText(const char* text, int32 length, int32 offset,
                                const text_run_array* runs = NULL);
 
+    virtual	void    MessageReceived(BMessage* message);
+
     virtual void    KeyDown(const char* bytes, int32 numBytes);
     virtual	void	MouseDown(BPoint where);
     virtual	void    MouseMoved(BPoint where, uint32 code,
@@ -60,9 +58,13 @@ private:
     void            SetBlockStyle(text_data* markupInfo, BFont* font, rgb_color* color);
     void            SetSpanStyle(text_data* markupInfo, BFont* font, rgb_color* color);
     void            SetTextStyle(text_data* markupInfo, BFont *font, rgb_color *color);
+
     BMessage*       GetOutlineAt(int32 offset, bool withNames = false);
     BMessage*       GetDocumentOutline(bool withNames = false, bool withDetails = false);
     void            UpdateStatus();
+
+    void            BuildContextMenu();
+    void            BuildContextSelectionMenu();
 
     BMessenger*     fMessenger;
     StatusBar*      fStatusBar;
@@ -72,4 +74,5 @@ private:
     BFont*          fCodeFont;
 
     map<int32, text_highlight*> *fTextHighlights;
+    BPopUpMenu*     fContextMenu;
 };
