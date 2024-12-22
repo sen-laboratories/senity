@@ -48,6 +48,9 @@ public:
     virtual	void	MouseDown(BPoint where);
     virtual	void    MouseMoved(BPoint where, uint32 code,
                                const BMessage* dragMessage);
+
+    // highlighting/labelling
+    void            Highlight(const rgb_color *fgColor = NULL, const rgb_color *bgColor = NULL);
     void            Highlight(int32 startOffset, int32 endOffset, const rgb_color *fgColor = NULL, const rgb_color *bgColor = NULL);
 
 private:

@@ -58,7 +58,7 @@ EditorTextView::~EditorTextView() {
 
 void EditorTextView::MessageReceived(BMessage* message) {
     switch (message->what) {
-        case MSG_HIGHLIGHT_TYPE:
+        case MSG_INSERT_TYPE:
         {
             printf("highlight type:\n");
             const char* label = message->GetString(MSG_PROP_LABEL);
@@ -156,43 +156,47 @@ void EditorTextView::MouseDown(BPoint where) {
         BPopUpMenu *fContextMenu = new BPopUpMenu("editorContextMenu", false, false);
 
         BMenu *contextMenu;
+        uint32 msgCode;
+
         if (startSelection != endSelection) {   // add label to selection
-            contextMenu = fContextMenu;      // no further menu level necessary
+            contextMenu = fContextMenu;         // no further menu level necessary
+            msgCode = MSG_LABEL_SELECTION;
         } else {
             contextMenu = new BMenu("Insert");  // insert a new label
             fContextMenu->AddItem(contextMenu);
+            msgCode = MSG_INSERT_TYPE;
         }
         // TODO: make this dynamically configurable and change to proper MIME types later
         BMenuItem *contextItem = new BMenuItem("Person", MessageUtil::CreateBMessage(
-            new BMessage(MSG_HIGHLIGHT_TYPE), "label", "Person"), '1');
+            new BMessage(msgCode), "label", "Person"), '1');
         contextMenu->AddItem(contextItem);
 
         contextItem = new BMenuItem("Location", MessageUtil::CreateBMessage(
-            new BMessage(MSG_HIGHLIGHT_TYPE), "label", "Location"), '2');
+            new BMessage(msgCode), "label", "Location"), '2');
         contextMenu->AddItem(contextItem);
 
         contextItem = new BMenuItem("Date", MessageUtil::CreateBMessage(
-            new BMessage(MSG_HIGHLIGHT_TYPE), "label", "Date"), '3');
+            new BMessage(msgCode), "label", "Date"), '3');
         contextMenu->AddItem(contextItem);
 
         contextMenu->AddSeparatorItem();    // now come the meta labels
 
         contextItem = new BMenuItem("Category", MessageUtil::CreateBMessage(
-            new BMessage(MSG_HIGHLIGHT_TYPE), "label", "Category"), '4');
+            new BMessage(msgCode), "label", "Category"), '4');
         contextMenu->AddItem(contextItem);
 
         contextItem = new BMenuItem("Topic", MessageUtil::CreateBMessage(
-            new BMessage(MSG_HIGHLIGHT_TYPE), "label", "Topic"), '5');
+            new BMessage(msgCode), "label", "Topic"), '5');
         contextMenu->AddItem(contextItem);
 
         contextItem = new BMenuItem("Tag", MessageUtil::CreateBMessage(
-            new BMessage(MSG_HIGHLIGHT_TYPE), "label", "Tag"), '6');
+            new BMessage(msgCode), "label", "Tag"), '6');
         contextMenu->AddItem(contextItem);
 
         contextMenu->SetTargetForItems(fEditorHandler);
 
         ConvertToScreen(&where);
-        fContextMenu->Go(where, false, false, true);
+        fContextMenu->Go(where, true, false, true);
     }
 }
 
@@ -222,6 +226,17 @@ void EditorTextView::Draw(BRect updateRect) {
                 textHighlight->bgColor);
         }
     }
+}
+
+void
+EditorTextView::Highlight(const rgb_color *fgColor, const rgb_color *bgColor) {
+    int32 startSelection, endSelection;
+    GetSelection(&startSelection, &endSelection);
+    if (startSelection == endSelection) {
+        printf("nothing to highlight.\n");
+        return;
+    }
+    Highlight(startSelection, endSelection, fgColor, bgColor);
 }
 
 void
@@ -260,24 +275,25 @@ EditorTextView::Highlight(int32 startOffset, int32 endOffset, const rgb_color *f
         fTextHighlights->insert({startOffset, highlight});
     }   // else it's just a redraw (TODO: support updating highlights)
 
-	SetDrawingMode(B_OP_BLEND);
     rgb_color hiCol = HighColor();
     rgb_color loCol = LowColor();
     rgb_color highlightFgColor = (fgColor != NULL ? *fgColor : textColor);
     rgb_color highlightBgColor = (bgColor != NULL ? *bgColor  : loCol);
 
     SetHighColor(highlightFgColor);
-    SetLowColor(highlightFgColor);
+    SetLowColor(highlightBgColor);
 
-	BGradientLinear gradient(0, 0, selRegion.RectAt(0).right, selRegion.RectAt(0).bottom);
-	gradient.AddColor(highlightFgColor, 0);
-	gradient.AddColor(highlightBgColor, 255);
+    /* refine and use for suggested highlights or labels, API is still experimental
+	BGradientLinear gradient(BPoint(0.0, 0.0), selRegion.RectAt(0).RightBottom());
+	gradient.AddColor(highlightFgColor, 0.0);
+	gradient.AddColor(highlightBgColor, 255.0); */
 
-	FillRegion(&selRegion, gradient);   //B_SOLID_LOW
+	SetDrawingMode(B_OP_BLEND);
+	FillRegion(&selRegion, B_SOLID_LOW);
+	SetDrawingMode(B_OP_COPY);
 
     SetLowColor(loCol);
     SetHighColor(hiCol);
-	SetDrawingMode(B_OP_COPY);
 }
 
 void EditorTextView::UpdateStatus() {

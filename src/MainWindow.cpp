@@ -17,8 +17,6 @@
 
 #include <cstdio>
 
-#include "Messages.h"
-
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "Window"
 
@@ -132,15 +130,6 @@ void MainWindow::MessageReceived(BMessage* message)
 		{
 			fSavePanel->Show();
 		} break;
-
-        case MSG_HIGHLIGHT_TYPE:
-        {
-            printf("MSG_HIGHLIGHT_TYPE received in MainWindow!\n");
-            const char* label = message->GetString(MSG_PROP_LABEL);
-            if (label != NULL) {
-                printf("highlight with label %s\n", label);
-            }
-        } break;
 
 		default:
 		{

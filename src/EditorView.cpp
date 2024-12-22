@@ -5,6 +5,7 @@
 
 #include <LayoutBuilder.h>
 #include <ObjectList.h>
+#include <Screen.h>
 #include <stdio.h>
 
 #include "EditorView.h"
@@ -33,12 +34,28 @@ EditorView::~EditorView() {
 
 void EditorView::MessageReceived(BMessage* message) {
     switch (message->what) {
-        case MSG_HIGHLIGHT_TYPE:
+        case MSG_INSERT_TYPE:
         {
-            printf("highlight type:\n");
+            printf("EditorView::insert type:\n");
+            const char* label = message->GetString(MSG_PROP_LABEL);
+            if (label != NULL) {
+                printf("will insert entity type %s.\n", label);
+            }
+            break;
+        }
+        case MSG_LABEL_SELECTION:
+        {
+            printf("EditorView::label selection:\n");
             const char* label = message->GetString(MSG_PROP_LABEL);
             if (label != NULL) {
                 printf("highlight with label %s\n", label);
+                // calculate highlight color
+                uint32 hash = BString(label).HashValue();
+                uint8  colorIndex = hash << 2;
+
+                printf("highlighting with screen color #%d.\n", colorIndex);
+                const rgb_color col = BScreen().ColorForIndex(colorIndex);
+                fTextView->Highlight(NULL, &col);
             }
             break;
         }
