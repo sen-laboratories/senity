@@ -135,7 +135,7 @@ void MainWindow::MessageReceived(BMessage* message)
 
         case MSG_HIGHLIGHT_TYPE:
         {
-            printf("MSG_HIGHLIGHT_TYPE received in MainWindow.\n");
+            printf("MSG_HIGHLIGHT_TYPE received in MainWindow!\n");
             const char* label = message->GetString(MSG_PROP_LABEL);
             if (label != NULL) {
                 printf("highlight with label %s\n", label);
@@ -144,9 +144,6 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		default:
 		{
-            printf("handing over unsupported msg:\n");
-            message->PrintToStream();
-
 			BWindow::MessageReceived(message);
 			break;
 		}

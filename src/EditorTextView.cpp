@@ -30,7 +30,7 @@ EditorTextView::EditorTextView(StatusBar *statusBar, BHandler *editorHandler)
     SetFontAndColor(be_plain_font);
 
     fStatusBar = statusBar;
-    fMessenger = new BMessenger(editorHandler);
+    fEditorHandler = editorHandler;
 
     // setup fonts
     fTextFont = new BFont(be_plain_font);
@@ -42,7 +42,6 @@ EditorTextView::EditorTextView(StatusBar *statusBar, BHandler *editorHandler)
     fMarkdownParser->Init();
 
     fTextHighlights = new map<int32, text_highlight*>();
-    fContextMenu = NULL;
 }
 
 EditorTextView::~EditorTextView() {
@@ -55,11 +54,6 @@ EditorTextView::~EditorTextView() {
 
     fTextHighlights->clear();
     delete fTextHighlights;
-
-    if (fContextMenu != NULL)
-        delete fContextMenu;
-
-    delete fMessenger;
 }
 
 void EditorTextView::MessageReceived(BMessage* message) {
@@ -159,9 +153,7 @@ void EditorTextView::MouseDown(BPoint where) {
         int32 startSelection, endSelection;
         GetSelection(&startSelection, &endSelection);
 
-        if (fContextMenu != NULL)
-            delete fContextMenu;
-        fContextMenu = new BPopUpMenu("editorContextMenu", false, false);
+        BPopUpMenu *fContextMenu = new BPopUpMenu("editorContextMenu", false, false);
 
         BMenu *contextMenu;
         if (startSelection != endSelection) {   // add label to selection
@@ -171,11 +163,8 @@ void EditorTextView::MouseDown(BPoint where) {
             fContextMenu->AddItem(contextMenu);
         }
         // TODO: make this dynamically configurable and change to proper MIME types later
-        // BMenuItem *contextItem = new BMenuItem("Person", MessageUtil::CreateBMessage(
-            // new BMessage(MSG_HIGHLIGHT_TYPE), "label", "Person"), '1');
-        BMessage *entityMsg = new BMessage(MSG_HIGHLIGHT_TYPE);
-        entityMsg->AddString("label", "Person");
-        BMenuItem *contextItem = new BMenuItem("Person", entityMsg, '1');
+        BMenuItem *contextItem = new BMenuItem("Person", MessageUtil::CreateBMessage(
+            new BMessage(MSG_HIGHLIGHT_TYPE), "label", "Person"), '1');
         contextMenu->AddItem(contextItem);
 
         contextItem = new BMenuItem("Location", MessageUtil::CreateBMessage(
@@ -199,6 +188,8 @@ void EditorTextView::MouseDown(BPoint where) {
         contextItem = new BMenuItem("Tag", MessageUtil::CreateBMessage(
             new BMessage(MSG_HIGHLIGHT_TYPE), "label", "Tag"), '6');
         contextMenu->AddItem(contextItem);
+
+        contextMenu->SetTargetForItems(fEditorHandler);
 
         ConvertToScreen(&where);
         fContextMenu->Go(where, false, false, true);

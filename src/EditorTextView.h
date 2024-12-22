@@ -66,7 +66,7 @@ private:
     void            BuildContextMenu();
     void            BuildContextSelectionMenu();
 
-    BMessenger*     fMessenger;
+    BHandler*       fEditorHandler;
     StatusBar*      fStatusBar;
     MarkdownParser* fMarkdownParser;
     BFont*          fTextFont;
@@ -74,5 +74,4 @@ private:
     BFont*          fCodeFont;
 
     map<int32, text_highlight*> *fTextHighlights;
-    BPopUpMenu*     fContextMenu;
 };
