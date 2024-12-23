@@ -16,5 +16,5 @@ Heavily in progress, prototype stage.
 
 Here's a screenshot from the current state, to be updated regularly:
 <p align="center">
-  <img src="assets/images/senity-highlight-selection.png" width=860 />
+  <img src="assets/images/senity-highlights.png" width=860 />
 </p>

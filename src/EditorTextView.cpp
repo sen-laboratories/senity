@@ -58,12 +58,12 @@ EditorTextView::~EditorTextView() {
 
 void EditorTextView::MessageReceived(BMessage* message) {
     switch (message->what) {
-        case MSG_INSERT_TYPE:
+        case MSG_INSERT_ENTITY:
         {
-            printf("highlight type:\n");
+            printf("insert entity:\n");
             const char* label = message->GetString(MSG_PROP_LABEL);
             if (label != NULL) {
-                printf("highlight with label %s\n", label);
+                printf("insert entity %s\n", label);
             }
             break;
         }
@@ -164,7 +164,7 @@ void EditorTextView::MouseDown(BPoint where) {
         } else {
             contextMenu = new BMenu("Insert");  // insert a new label
             fContextMenu->AddItem(contextMenu);
-            msgCode = MSG_INSERT_TYPE;
+            msgCode = MSG_INSERT_ENTITY;
         }
         // TODO: make this dynamically configurable and change to proper MIME types later
         BMenuItem *contextItem = new BMenuItem("Person", MessageUtil::CreateBMessage(
@@ -213,8 +213,6 @@ void EditorTextView::Draw(BRect updateRect) {
     // int32 updateOffset = OffsetAt(updateRect.LeftTop());
     // auto highlight = fTextHighlights->find(updateOffset); //todo: get nearest offsets to updateRect boundaries
 
-    printf("redrawing text highlights, scanning %zu highlights...\n", fTextHighlights->size());
-
     for (auto highlight : *fTextHighlights) {
         auto textHighlight = highlight.second;
         if (textHighlight->region->Intersects(updateRect)) {
@@ -229,7 +227,7 @@ void EditorTextView::Draw(BRect updateRect) {
 }
 
 void
-EditorTextView::Highlight(const rgb_color *fgColor, const rgb_color *bgColor) {
+EditorTextView::HighlightSelection(const rgb_color *fgColor, const rgb_color *bgColor) {
     int32 startSelection, endSelection;
     GetSelection(&startSelection, &endSelection);
     if (startSelection == endSelection) {
@@ -277,7 +275,7 @@ EditorTextView::Highlight(int32 startOffset, int32 endOffset, const rgb_color *f
 
     rgb_color hiCol = HighColor();
     rgb_color loCol = LowColor();
-    rgb_color highlightFgColor = (fgColor != NULL ? *fgColor : textColor);
+    rgb_color highlightFgColor = (fgColor != NULL ? *fgColor : hiCol);
     rgb_color highlightBgColor = (bgColor != NULL ? *bgColor  : loCol);
 
     SetHighColor(highlightFgColor);

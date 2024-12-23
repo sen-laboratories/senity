@@ -34,7 +34,7 @@ EditorView::~EditorView() {
 
 void EditorView::MessageReceived(BMessage* message) {
     switch (message->what) {
-        case MSG_INSERT_TYPE:
+        case MSG_INSERT_ENTITY:
         {
             printf("EditorView::insert type:\n");
             const char* label = message->GetString(MSG_PROP_LABEL);
@@ -51,11 +51,11 @@ void EditorView::MessageReceived(BMessage* message) {
                 printf("highlight with label %s\n", label);
                 // calculate highlight color
                 uint32 hash = BString(label).HashValue();
-                uint8  colorIndex = hash << 2;
+                uint8  colorIndex = (hash >> 2) % 256 - 1;
 
                 printf("highlighting with screen color #%d.\n", colorIndex);
                 const rgb_color col = BScreen().ColorForIndex(colorIndex);
-                fTextView->Highlight(NULL, &col);
+                fTextView->HighlightSelection(NULL, new rgb_color(col));
             }
             break;
         }

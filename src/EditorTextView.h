@@ -50,7 +50,7 @@ public:
                                const BMessage* dragMessage);
 
     // highlighting/labelling
-    void            Highlight(const rgb_color *fgColor = NULL, const rgb_color *bgColor = NULL);
+    void            HighlightSelection(const rgb_color *fgColor = NULL, const rgb_color *bgColor = NULL);
     void            Highlight(int32 startOffset, int32 endOffset, const rgb_color *fgColor = NULL, const rgb_color *bgColor = NULL);
 
 private:
