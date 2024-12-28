@@ -43,9 +43,9 @@ void EditorView::MessageReceived(BMessage* message) {
             }
             break;
         }
-        case MSG_LABEL_SELECTION:
+        case MSG_ADD_HIGHLIGHT:
         {
-            printf("EditorView::label selection:\n");
+            printf("EditorView::add highlight for selection:\n");
             const char* label = message->GetString(MSG_PROP_LABEL);
             if (label != NULL) {
                 printf("highlight with label %s\n", label);
@@ -53,7 +53,7 @@ void EditorView::MessageReceived(BMessage* message) {
                 uint32 hash = BString(label).HashValue();
                 uint8  colorIndex = (hash >> 2) % 256 - 1;
 
-                printf("highlighting with screen color #%d.\n", colorIndex);
+                printf("=== highlighting with screen color #%d.\n", colorIndex);
                 const rgb_color col = BScreen().ColorForIndex(colorIndex);
                 fTextView->HighlightSelection(NULL, new rgb_color(col));
             }

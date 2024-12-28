@@ -122,7 +122,6 @@ outline_map* MarkdownParser::GetOutlineAt(int32 offset) {
 
     while (search && mapIter != fTextLookup->markupMap->begin()) {
         auto stack = mapIter->second;
-        printf("GetOutlineAt @%d\n", mapIter->first);
 
         for (auto item : *stack) {
             const char* outlineElement = GetOutlineItemName(item);
@@ -132,11 +131,11 @@ outline_map* MarkdownParser::GetOutlineAt(int32 offset) {
             if (outlineElements->find(outlineElement) == outlineElements->end()) {
                 if (item->markup_class == MD_BLOCK_BEGIN) {
                     outlineElements->insert({outlineElement, item});
-                }
-                if (strncmp(outlineElement, "H1", 2) == 0) {
-                    printf("top level H1 reached, done.\n");
-                    search = false;
-                    break;
+                    if (strncmp(outlineElement, "H1", 2) == 0) {
+                        printf("top level H1 reached, done.\n");
+                        search = false;
+                        break;
+                    }
                 }
             } else {
                 // check for closed blocks and remove from hierarchical outline

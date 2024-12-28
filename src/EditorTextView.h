@@ -52,6 +52,7 @@ public:
     // highlighting/labelling
     void            HighlightSelection(const rgb_color *fgColor = NULL, const rgb_color *bgColor = NULL);
     void            Highlight(int32 startOffset, int32 endOffset, const rgb_color *fgColor = NULL, const rgb_color *bgColor = NULL);
+    void            ClearHighlights();
 
 private:
     void            MarkupText(int32 start, int32 end);
@@ -65,7 +66,7 @@ private:
     BMessage*       GetOutlineAt(int32 offset, bool withNames = false);
     BMessage*       GetDocumentOutline(bool withNames = false, bool withDetails = false);
     void            UpdateStatus();
-
+    void            RedrawHighlight(text_highlight *highlight);
     void            BuildContextMenu();
     void            BuildContextSelectionMenu();
 

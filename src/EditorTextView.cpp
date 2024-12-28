@@ -60,7 +60,7 @@ void EditorTextView::MessageReceived(BMessage* message) {
     switch (message->what) {
         case MSG_INSERT_ENTITY:
         {
-            printf("insert entity:\n");
+            printf("TV: insert entity:\n");
             const char* label = message->GetString(MSG_PROP_LABEL);
             if (label != NULL) {
                 printf("insert entity %s\n", label);
@@ -75,12 +75,14 @@ void EditorTextView::MessageReceived(BMessage* message) {
 }
 
 void EditorTextView::SetText(const char* text, const text_run_array* runs) {
+    ClearHighlights();
     BTextView::SetText(text, runs);
     MarkupText(0, TextLength());
     UpdateStatus();
 }
 
 void EditorTextView::SetText(BFile* file, int32 offset, size_t size) {
+    ClearHighlights();
     BTextView::SetText(file, offset, size);
     MarkupText(offset, TextLength());
     UpdateStatus();
@@ -88,6 +90,7 @@ void EditorTextView::SetText(BFile* file, int32 offset, size_t size) {
 
 // hook methods
 void EditorTextView::DeleteText(int32 start, int32 finish) {
+    ClearHighlights();
     BTextView::DeleteText(start, finish);
     MarkupText(start, finish);
     UpdateStatus();
@@ -160,7 +163,7 @@ void EditorTextView::MouseDown(BPoint where) {
 
         if (startSelection != endSelection) {   // add label to selection
             contextMenu = fContextMenu;         // no further menu level necessary
-            msgCode = MSG_LABEL_SELECTION;
+            msgCode = MSG_ADD_HIGHLIGHT;
         } else {
             contextMenu = new BMenu("Insert");  // insert a new label
             fContextMenu->AddItem(contextMenu);
@@ -216,18 +219,13 @@ void EditorTextView::Draw(BRect updateRect) {
     for (auto highlight : *fTextHighlights) {
         auto textHighlight = highlight.second;
         if (textHighlight->region->Intersects(updateRect)) {
-            printf("redraw highlight at offset %d...\n", textHighlight->startOffset);
-            Highlight(
-                textHighlight->startOffset,
-                textHighlight->endOffset,
-                textHighlight->fgColor,
-                textHighlight->bgColor);
+            printf("=== redraw highlight at offset %d...\n", textHighlight->startOffset);
+            RedrawHighlight(textHighlight);
         }
     }
 }
 
-void
-EditorTextView::HighlightSelection(const rgb_color *fgColor, const rgb_color *bgColor) {
+void EditorTextView::HighlightSelection(const rgb_color *fgColor, const rgb_color *bgColor) {
     int32 startSelection, endSelection;
     GetSelection(&startSelection, &endSelection);
     if (startSelection == endSelection) {
@@ -258,40 +256,63 @@ EditorTextView::Highlight(int32 startOffset, int32 endOffset, const rgb_color *f
 	BRegion selRegion;
 	GetTextRegion(startOffset, endOffset, &selRegion);
 
+    text_highlight *highlight;
     auto savedHighlight = fTextHighlights->find(startOffset);
+
+    // add to saved highlights if not already there
     if (savedHighlight == fTextHighlights->end()) {
         printf("Highlight: store new highlight in map...\n");
-
-        // add to saved highlights for redraw
-        text_highlight *highlight = new text_highlight;
-        highlight->startOffset = startOffset;
-        highlight->endOffset   = endOffset;
-        highlight->region      = new BRegion(selRegion);
-        highlight->fgColor     = fgColor;
-        highlight->bgColor     = bgColor;
-
+        highlight = new text_highlight;
         fTextHighlights->insert({startOffset, highlight});
-    }   // else it's just a redraw (TODO: support updating highlights)
+    } else {
+        // update existing highlight with new values (we don't support overlapping highlights as an efficiency tradeoff)
+        printf("Highlight: update existing highlight in map...\n");
+        highlight = savedHighlight->second;
+        delete highlight->region;
+        delete highlight->fgColor;
+        delete highlight->bgColor;
+    }
+
+    highlight->startOffset = startOffset;
+    highlight->endOffset   = endOffset;
+    highlight->region      = new BRegion(selRegion);
 
     rgb_color hiCol = HighColor();
     rgb_color loCol = LowColor();
+
     rgb_color highlightFgColor = (fgColor != NULL ? *fgColor : hiCol);
     rgb_color highlightBgColor = (bgColor != NULL ? *bgColor  : loCol);
 
-    SetHighColor(highlightFgColor);
-    SetLowColor(highlightBgColor);
+    highlight->fgColor     = new rgb_color(highlightFgColor);
+    highlight->bgColor     = new rgb_color(highlightBgColor);
+
+    RedrawHighlight(highlight);
+}
+
+void EditorTextView::RedrawHighlight(text_highlight* highlight)
+{
+    const rgb_color *fgColor = highlight->fgColor;
+    const rgb_color *bgColor = highlight->bgColor;
+    BRegion *region = highlight->region;
+
+    SetHighColor(*fgColor);
+    SetLowColor(*bgColor);
 
     /* refine and use for suggested highlights or labels, API is still experimental
 	BGradientLinear gradient(BPoint(0.0, 0.0), selRegion.RectAt(0).RightBottom());
 	gradient.AddColor(highlightFgColor, 0.0);
-	gradient.AddColor(highlightBgColor, 255.0); */
+	gradient.AddColor(highlightBgColor, 255.0);*/
 
 	SetDrawingMode(B_OP_BLEND);
-	FillRegion(&selRegion, B_SOLID_LOW);
-	SetDrawingMode(B_OP_COPY);
+	FillRegion(region, B_SOLID_LOW);
+}
 
-    SetLowColor(loCol);
-    SetHighColor(hiCol);
+void EditorTextView::ClearHighlights() {
+    for (auto highlight : *fTextHighlights) {
+        highlight.second = NULL;
+    }
+    fTextHighlights->clear();
+    Invalidate(Bounds());
 }
 
 void EditorTextView::UpdateStatus() {
