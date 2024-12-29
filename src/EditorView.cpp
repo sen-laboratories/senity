@@ -55,7 +55,7 @@ void EditorView::MessageReceived(BMessage* message) {
 
                 printf("=== highlighting with screen color #%d.\n", colorIndex);
                 const rgb_color col = BScreen().ColorForIndex(colorIndex);
-                fTextView->HighlightSelection(NULL, new rgb_color(col));
+                fTextView->HighlightSelection(NULL, &col);
             }
             break;
         }
