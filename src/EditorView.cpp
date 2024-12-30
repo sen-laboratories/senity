@@ -11,8 +11,9 @@
 #include "EditorView.h"
 #include "Messages.h"
 
-EditorView::EditorView() : BView("editor_view", B_WILL_DRAW | B_PULSE_NEEDED | B_FRAME_EVENTS) {
-
+EditorView::EditorView() : BView("editor_view", B_WILL_DRAW | B_PULSE_NEEDED | B_FRAME_EVENTS)
+{
+    fColorDefs  = new ColorDefs();
     fStatusBar  = new StatusBar();
     fTextView   = new EditorTextView(fStatusBar, this);
     fScrollView = new BScrollView("editorScrollview", fTextView, 0, true, true);
@@ -30,6 +31,7 @@ EditorView::EditorView() : BView("editor_view", B_WILL_DRAW | B_PULSE_NEEDED | B
 
 EditorView::~EditorView() {
     RemoveSelf();
+    delete fColorDefs;
 }
 
 void EditorView::MessageReceived(BMessage* message) {
@@ -51,11 +53,11 @@ void EditorView::MessageReceived(BMessage* message) {
                 printf("highlight with label %s\n", label);
                 // calculate highlight color
                 uint32 hash = BString(label).HashValue();
-                uint8  colorIndex = (hash >> 2) % 256 - 1;
+                int colorIndex = (hash >> 2) % NUM_COLORS - 1;
 
                 printf("=== highlighting with screen color #%d.\n", colorIndex);
-                const rgb_color col = BScreen().ColorForIndex(colorIndex);
-                fTextView->HighlightSelection(NULL, &col);
+                const rgb_color *col = fColorDefs->GetColor(static_cast<COLOR_NAME>(colorIndex));
+                fTextView->HighlightSelection(NULL, col);
             }
             break;
         }

@@ -219,7 +219,6 @@ void EditorTextView::Draw(BRect updateRect) {
     for (auto highlight : *fTextHighlights) {
         auto textHighlight = highlight.second;
         if (textHighlight->region->Intersects(updateRect)) {
-            printf("=== redraw highlight at offset %d...\n", textHighlight->startOffset);
             RedrawHighlight(textHighlight);
         }
     }
@@ -281,12 +280,12 @@ EditorTextView::Highlight(int32 startOffset, int32 endOffset, const rgb_color *f
     rgb_color loCol = LowColor();
 
     rgb_color highlightFgColor = (fgColor != NULL ? *fgColor : hiCol);
-    rgb_color highlightBgColor = (bgColor != NULL ? *bgColor  : loCol);
+    rgb_color highlightBgColor = (bgColor != NULL ? *bgColor : loCol);
 
     highlight->fgColor     = new rgb_color(highlightFgColor);
     highlight->bgColor     = new rgb_color(highlightBgColor);
 
-    RedrawHighlight(highlight);
+    Invalidate(&selRegion);
 }
 
 void EditorTextView::RedrawHighlight(text_highlight* highlight)
@@ -295,16 +294,29 @@ void EditorTextView::RedrawHighlight(text_highlight* highlight)
     const rgb_color *bgColor = highlight->bgColor;
     BRegion *region = highlight->region;
 
+    const rgb_color oldHi = HighColor();
+    const rgb_color oldLo = LowColor();
+
     SetHighColor(*fgColor);
     SetLowColor(*bgColor);
-
-    /* refine and use for suggested highlights or labels, API is still experimental
-	BGradientLinear gradient(BPoint(0.0, 0.0), selRegion.RectAt(0).RightBottom());
-	gradient.AddColor(highlightFgColor, 0.0);
-	gradient.AddColor(highlightBgColor, 255.0);*/
-
 	SetDrawingMode(B_OP_BLEND);
-	FillRegion(region, B_SOLID_LOW);
+
+    printf("redraw highlight from %d - %d with color RGB %d, %d, %d\n",
+            highlight->startOffset, highlight->endOffset, bgColor->red, bgColor->green, bgColor->blue);
+
+    BGradientLinear gradient;
+    if (highlight->generated) {
+        gradient.SetStart(BPoint(0.0, 0.0));
+        gradient.SetEnd(region->RectAt(region->CountRects()-1).RightBottom());
+        gradient.AddColor(*fgColor, 0.0);
+        gradient.AddColor(*bgColor, 255.0);
+
+        FillRegion(region, gradient);
+    } else {
+        FillRegion(region, B_SOLID_LOW);
+    }
+    SetHighColor(oldHi);
+    SetLowColor(oldLo);
 }
 
 void EditorTextView::ClearHighlights() {

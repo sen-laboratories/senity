@@ -16,6 +16,7 @@
 #include <View.h>
 
 #include <cstdio>
+#include <glog/logging.h>
 
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "Window"

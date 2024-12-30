@@ -6,13 +6,12 @@
 
 #include <Application.h>
 
-
 class App : public BApplication
 {
 public:
 							App();
 	virtual					~App();
-
+    virtual void            ArgvReceived(int32 argc, char ** argv);
 	virtual void			AboutRequested();
 
 private:

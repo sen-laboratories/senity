@@ -21,9 +21,10 @@ const rgb_color headerColor = ui_color(B_CONTROL_HIGHLIGHT_COLOR);  // todo: use
 class EditorTextView : public BTextView {
 
 typedef struct text_highlight {
-    int32 startOffset;
-    int32 endOffset;
-    BRegion          *region;
+    int32           startOffset;
+    int32           endOffset;
+    bool            generated = false;
+    BRegion         *region;
     const rgb_color *fgColor;
     const rgb_color *bgColor;
 } text_highlight;
@@ -35,6 +36,7 @@ public:
     virtual         ~EditorTextView();
 
     virtual void    Draw(BRect updateRect);
+
     virtual void    SetText(BFile *file, int32 offset, size_t size);
     virtual void    SetText(const char* text, const text_run_array* runs = NULL);
 

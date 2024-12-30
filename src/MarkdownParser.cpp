@@ -120,7 +120,7 @@ outline_map* MarkdownParser::GetOutlineAt(int32 offset) {
     }
     bool search = true;
 
-    while (search && mapIter != fTextLookup->markupMap->begin()) {
+    while (search && mapIter != fTextLookup->markupMap->cbegin()) {
         auto stack = mapIter->second;
 
         for (auto item : *stack) {
@@ -141,7 +141,6 @@ outline_map* MarkdownParser::GetOutlineAt(int32 offset) {
                 // check for closed blocks and remove from hierarchical outline
                 if (item->markup_class == MD_BLOCK_END) {
                     // remove closed block from outline
-                    printf("removing closed block element %s\n", outlineElement);
                     outlineElements->erase(outlineElement);
                 }
             }
@@ -381,7 +380,6 @@ int MarkdownParser::LeaveSpan(MD_SPANTYPE type, MD_OFFSET offset, void* detail, 
 
 int MarkdownParser::Text(MD_TEXTTYPE type, const MD_CHAR* text, MD_OFFSET offset, MD_SIZE size, void* userdata)
 {
-    printf("TEXT @ %d with len %d\n", offset, size);
     text_data* data = new text_data;
 
     // text is already stored in the document and will be rendered according to block/span markup and MD_TEXTTYPE

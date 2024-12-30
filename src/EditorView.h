@@ -9,6 +9,7 @@
 #include <ScrollView.h>
 #include <SupportDefs.h>
 
+#include "ColorDefs.h"
 #include "EditorTextView.h"
 #include "StatusBar.h"
 
@@ -25,4 +26,5 @@ private:
     EditorTextView* fTextView;
     BScrollView*	fScrollView;
     StatusBar*      fStatusBar;
+    ColorDefs*      fColorDefs;
 };
