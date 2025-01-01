@@ -89,9 +89,13 @@ public:
     markup_map*         GetMarkupMap();
 
     /**
-     * looks up nearest position in the text markup map
+     * looks up nearest previous position in the text markup map
      */
-    markup_map_iter     GetNearestMarkupMapIter(int32 offset);
+    markup_map_iter     GetPreviousMarkupMapIter(int32 offset);
+    /**
+     * looks up nearest following position in the text markup map
+     */
+    markup_map_iter     GetNextMarkupMapIter(int32 offset);
     /**
      * returns the text metadata stack at or near the given offset and optionally returns the effective offset.
      */
@@ -102,8 +106,7 @@ public:
     status_t            GetMarkupBoundariesAt(int32 offset, int32* start, int32* end,
                                          BOUNDARY_TYPE boundaryType = BLOCK,
                                          SEARCH_DIRECTION searchType = BOTH,
-                                         markup_stack *resultStack = NULL,
-                                         bool unique = false);
+                                         bool trimToText = false);
 
     outline_map*        GetOutlineAt(int32 offset);
 
@@ -115,6 +118,7 @@ public:
     static const char*  GetSpanTypeName(MD_SPANTYPE type) ;
     static const char*  GetTextTypeName(MD_TEXTTYPE type);
     static const char*  GetMarkupClassName(MD_CLASS type);
+    static const char*  GetMarkupItemName(text_data* item);
 
 private:
     MD_PARSER*   fParser;

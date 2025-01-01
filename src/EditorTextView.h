@@ -24,6 +24,7 @@ typedef struct text_highlight {
     int32           startOffset;
     int32           endOffset;
     bool            generated = false;
+    bool            outline = false;
     BRegion         *region;
     const rgb_color *fgColor;
     const rgb_color *bgColor;
@@ -52,8 +53,11 @@ public:
                                const BMessage* dragMessage);
 
     // highlighting/labelling
-    void            HighlightSelection(const rgb_color *fgColor = NULL, const rgb_color *bgColor = NULL);
-    void            Highlight(int32 startOffset, int32 endOffset, const rgb_color *fgColor = NULL, const rgb_color *bgColor = NULL);
+    void            HighlightSelection(const rgb_color *fgColor = NULL, const rgb_color *bgColor = NULL,
+                                       bool generated = false, bool outline = false);
+    void            Highlight(int32 startOffset, int32 endOffset,
+                              const rgb_color *fgColor = NULL, const rgb_color *bgColor = NULL,
+                              bool generated = false, bool outline = false);
     void            ClearHighlights();
 
 private:
@@ -61,14 +65,17 @@ private:
     void            StyleText(text_data* markupInfo,
                               stack<text_run> *styleStack,
                               BFont* font, rgb_color* color);
+
     void            SetBlockStyle(text_data* markupInfo, BFont* font, rgb_color* color);
     void            SetSpanStyle(text_data* markupInfo, BFont* font, rgb_color* color);
     void            SetTextStyle(text_data* markupInfo, BFont *font, rgb_color *color);
 
     BMessage*       GetOutlineAt(int32 offset, bool withNames = false);
     BMessage*       GetDocumentOutline(bool withNames = false, bool withDetails = false);
+
     void            UpdateStatus();
     void            RedrawHighlight(text_highlight *highlight);
+
     void            BuildContextMenu();
     void            BuildContextSelectionMenu();
 

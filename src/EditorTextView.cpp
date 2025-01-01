@@ -7,9 +7,11 @@
 #include <assert.h>
 #include <GradientLinear.h>
 #include <Messenger.h>
+#include <Polygon.h>
 #include <Region.h>
 #include <ScrollView.h>
 #include <stdio.h>
+#include <Window.h>
 
 #include "EditorTextView.h"
 #include "Messages.h"
@@ -127,8 +129,8 @@ void EditorTextView::MouseDown(BPoint where) {
             int32 begin, end;
             fMarkdownParser->GetMarkupBoundariesAt(offset, &begin, &end, BLOCK, BOTH);
             if (begin >= 0 && end > 0) {
-                printf("highlighting text from %d - %d\n", begin, end);
-                Highlight(begin, end, NULL, &linkColor);
+                printf("selecting text from %d - %d\n", begin, end);
+                Highlight(begin, end, NULL, &linkColor, false, true);
             } else {
                 printf("got no boundaries for offset %d!\n", offset);
             }
@@ -136,16 +138,8 @@ void EditorTextView::MouseDown(BPoint where) {
             auto data = fMarkdownParser->GetMarkupStackAt(offset);
             BString stack;
             for (auto item : *data) {
-                stack << "@" << item->offset << ": " <<
-                MarkdownParser::GetMarkupClassName(item->markup_class) << " [" <<
-                (item->markup_class == MD_BLOCK_BEGIN || item->markup_class == MD_BLOCK_END ?
-                    MarkdownParser::GetBlockTypeName(item->markup_type.block_type) :
-                        (item->markup_class == MD_SPAN_BEGIN || item->markup_class == MD_SPAN_END ?
-                            MarkdownParser::GetSpanTypeName(item->markup_type.span_type) :
-                                MarkdownParser::GetTextTypeName(item->markup_type.text_type)    // must be TEXT
-                        )
-                ) <<
-                "]";
+                stack << "@" << item->offset << ": " << MarkdownParser::GetMarkupClassName(item->markup_class)
+                      << MarkdownParser::GetMarkupItemName(item) << "]";
                 if (item != *data->end())
                     stack << " | ";
             }
@@ -224,18 +218,20 @@ void EditorTextView::Draw(BRect updateRect) {
     }
 }
 
-void EditorTextView::HighlightSelection(const rgb_color *fgColor, const rgb_color *bgColor) {
+void EditorTextView::HighlightSelection(const rgb_color *fgColor, const rgb_color *bgColor, bool generated, bool outline) {
     int32 startSelection, endSelection;
     GetSelection(&startSelection, &endSelection);
     if (startSelection == endSelection) {
         printf("nothing to highlight.\n");
         return;
     }
-    Highlight(startSelection, endSelection, fgColor, bgColor);
+    Highlight(startSelection, endSelection, fgColor, bgColor, generated, outline);
 }
 
 void
-EditorTextView::Highlight(int32 startOffset, int32 endOffset, const rgb_color *fgColor, const rgb_color *bgColor)
+EditorTextView::Highlight(int32 startOffset, int32 endOffset,
+                          const rgb_color *fgColor, const rgb_color *bgColor,
+                          bool generated, bool outline)
 {
 	// pin offsets at reasonable values
 	if (startOffset < 0)
@@ -285,7 +281,17 @@ EditorTextView::Highlight(int32 startOffset, int32 endOffset, const rgb_color *f
     highlight->fgColor     = new rgb_color(highlightFgColor);
     highlight->bgColor     = new rgb_color(highlightBgColor);
 
-    Invalidate(&selRegion);
+    highlight->generated   = generated;
+    highlight->outline     = outline;
+
+    Invalidate(new BRegion(selRegion));
+
+    BMessage resizeMsg(B_WINDOW_RESIZED);
+    BRect windowBounds(Window()->Bounds());
+    resizeMsg.AddInt32("width", windowBounds.Width());
+    resizeMsg.AddInt32("height", windowBounds.Height());
+
+    fEditorHandler->MessageReceived(new BMessage(resizeMsg));
 }
 
 void EditorTextView::RedrawHighlight(text_highlight* highlight)
@@ -301,11 +307,25 @@ void EditorTextView::RedrawHighlight(text_highlight* highlight)
     SetLowColor(*bgColor);
 	SetDrawingMode(B_OP_BLEND);
 
-    printf("redraw highlight from %d - %d with color RGB %d, %d, %d\n",
-            highlight->startOffset, highlight->endOffset, bgColor->red, bgColor->green, bgColor->blue);
+    if (highlight->outline) {
+        BRegion* region = highlight->region;
+        int32 regionRects = region->CountRects();
+        BPoint points[regionRects * 4];
 
-    BGradientLinear gradient;
-    if (highlight->generated) {
+        for (int32 rectNum = 0; rectNum < regionRects; rectNum++) {
+            int32 rectPoint = 0;
+            BRect rect = region->RectAt(rectNum);
+            points[rectPoint++] = rect.LeftTop();
+            points[rectPoint++] = rect.RightTop();
+            points[rectPoint++] = rect.RightBottom();
+            points[rectPoint++] = rect.LeftBottom();
+        }
+        BPolygon poly(points, regionRects * 4);
+        StrokePolygon(&poly);
+    }
+    else if (highlight->generated) {    // does not make sense to set both outline and generated to true, different use
+        BGradientLinear gradient;
+
         gradient.SetStart(BPoint(0.0, 0.0));
         gradient.SetEnd(region->RectAt(region->CountRects()-1).RightBottom());
         gradient.AddColor(*fgColor, 0.0);
@@ -353,6 +373,7 @@ BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames) {
 
     printf("GetOutline: got outline map at offset %d with %zu elements.\n", offset, outlineMap->size());
 
+    // internal API using efficient info exchange via pointers
     for (auto item : *outlineMap) {
         outlineMsg->AddPointer(item.first, item.second);
     }

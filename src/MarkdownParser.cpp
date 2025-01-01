@@ -19,7 +19,17 @@ static const char *text_type_name[] = {"normal", "NULL char", "hard break", "sof
 const char* MarkdownParser::GetBlockTypeName(MD_BLOCKTYPE type) { return block_type_name[type]; }
 const char* MarkdownParser::GetSpanTypeName(MD_SPANTYPE type)   { return span_type_name[type];  }
 const char* MarkdownParser::GetTextTypeName(MD_TEXTTYPE type)   { return text_type_name[type];  }
-const char* MarkdownParser::GetMarkupClassName(MD_CLASS type)   { return markup_class_name[type];  }
+const char* MarkdownParser::GetMarkupClassName(MD_CLASS type)   { return markup_class_name[type]; }
+
+const char* MarkdownParser::GetMarkupItemName(text_data* item) {
+    return (item->markup_class == MD_BLOCK_BEGIN || item->markup_class == MD_BLOCK_END ?
+            MarkdownParser::GetBlockTypeName(item->markup_type.block_type) :
+                (item->markup_class == MD_SPAN_BEGIN || item->markup_class == MD_SPAN_END ?
+                    MarkdownParser::GetSpanTypeName(item->markup_type.span_type) :
+                        MarkdownParser::GetTextTypeName(item->markup_type.text_type)    // must be TEXT
+                )
+            );
+}
 
 MarkdownParser::MarkdownParser()
     : fParser(new MD_PARSER) {
@@ -83,22 +93,29 @@ int32 MarkdownParser::GetTextShiftAt(int32 offset) {
     return 0;
 }
 
-markup_map_iter MarkdownParser::GetNearestMarkupMapIter(int32 offset) {
+markup_map_iter MarkdownParser::GetPreviousMarkupMapIter(int32 offset) {
     markup_map_iter lowIter;
     lowIter = fTextLookup->markupMap->lower_bound(offset);
 
-    // not first offset but found element
     if (lowIter != fTextLookup->markupMap->begin() && lowIter != fTextLookup->markupMap->end()) {
         lowIter = std::prev(lowIter);
     }
     return lowIter;
 }
 
+markup_map_iter MarkdownParser::GetNextMarkupMapIter(int32 offset) {
+    markup_map_iter lowIter;
+    // lower_bound is not less than offset, which is correct
+    // cf https://en.cppreference.com/w/cpp/container/map/upper_bound
+    // see also #GetPreviousMarkupMapIter()
+    return fTextLookup->markupMap->lower_bound(offset);
+}
+
 markup_stack* MarkdownParser::GetMarkupStackAt(int32 offset, int32* mapOffsetFound) {
     // search markup stack for nearest offset in search direction
     printf("searching nearest markup info stack for offset %d...\n", offset);
 
-    auto low = GetNearestMarkupMapIter(offset);
+    auto low = GetPreviousMarkupMapIter(offset);
     printf("found stack at nearest lower offset %d for offset %d\n", low->first, offset);
 
     if (mapOffsetFound != NULL) {
@@ -113,7 +130,7 @@ outline_map* MarkdownParser::GetOutlineAt(int32 offset) {
 
     // final stack holding all outline items
     markup_stack* resultStack = new markup_stack;
-    auto mapIter = GetNearestMarkupMapIter(offset);
+    auto mapIter = GetPreviousMarkupMapIter(offset);
     if (mapIter == fTextLookup->markupMap->end()) {
         printf("no text info found for outline!\n");
         return outlineElements;
@@ -155,38 +172,26 @@ outline_map* MarkdownParser::GetOutlineAt(int32 offset) {
     return outlineElements;
 }
 
-// TODO: this is a demi-God method, maybe split search-to-begin and search-to-end
 status_t MarkdownParser::GetMarkupBoundariesAt(int32 offset, int32* start, int32* end,
                                               BOUNDARY_TYPE boundaryType,
                                               SEARCH_DIRECTION searchType,
-                                              markup_stack* resultStack, bool unique) {
+                                              bool trimToText) {
 
     MD_CLASS classToSearch = (boundaryType == BLOCK ? MD_BLOCK_BEGIN : MD_SPAN_BEGIN);
-    int32 searchOffset;
-    // we just need the offset for starting the search here
-    GetMarkupStackAt(offset, &searchOffset);
 
-    auto mapIter = fTextLookup->markupMap->find(searchOffset);
+    auto mapIter = GetPreviousMarkupMapIter(offset);
     if (mapIter == fTextLookup->markupMap->end()) {
         if (start != NULL)
             *start = -1;
         if (end != NULL)
             *end = -1;
-        printf("error: could not find offset %d in lookupMap!\n", searchOffset);
+        printf("error: could not find matching previous offset in lookupMap for offset %d!\n", offset);
         return B_ERROR;
     }
 
     int32 startPos = 0;
+    int32 textPos = -1;
     bool  search = true;
-    // if unique is set, we need to filter elements with the same
-    // markup class and type, e.g. sibling spans or similar blocks.
-    map<MD_BLOCKTYPE, text_data*> blocks;
-    if (unique)
-        blocks = map<MD_BLOCKTYPE, text_data*>();
-
-    map<MD_SPANTYPE, text_data*>  spans;
-    if (unique)
-        spans = map<MD_SPANTYPE, text_data*>();
 
     if (searchType == BEGIN || searchType == BOTH) {
         // go back through markup map until the stack containing the desired markup class is found
@@ -194,19 +199,12 @@ status_t MarkdownParser::GetMarkupBoundariesAt(int32 offset, int32* start, int32
             auto stack = mapIter->second;
             // now search for desired markup class type in the stack found
             for (auto stackItem : *mapIter->second) {
+                if (stackItem->markup_class == MD_TEXT) {
+                    textPos = stackItem->offset;
+                }
+
                 if (stackItem->markup_class == classToSearch) {
-                    if (resultStack != NULL) {
-                        if (! unique) {      // add all stack elements unfiltered
-                            resultStack->push_back(stackItem);
-                        } else {
-                            // search for already captured element with similar class, type and detail (e.g. H1 != H2)
-                            bool found = FindTextData(stackItem, blocks, spans);
-                            if (! found) {   // add if no similar element was found
-                                resultStack->push_back(stackItem);
-                            }
-                        }
-                    }
-                    startPos = mapIter->first;
+                    startPos = stackItem->offset;
 
                     printf("    markup START boundary search: found markup class %s [%s] at offset %d\n",
                             GetMarkupClassName(classToSearch),
@@ -217,39 +215,32 @@ status_t MarkdownParser::GetMarkupBoundariesAt(int32 offset, int32* start, int32
                     search = false;
                     break;
                 }
-                if (unique) {
-                    if (boundaryType == BLOCK) {
-                        if (stackItem->markup_class == MD_BLOCK_BEGIN) {
-                            blocks.insert({stackItem->markup_type.block_type, stackItem});
-                        }
-                    } else {
-                        if (stackItem->markup_class == MD_SPAN_BEGIN) {
-                            spans.insert({stackItem->markup_type.span_type, stackItem});
-                        }
-                    }
-                }
             }
             // not found at stack at this map offset (or followToRoot is true), continue
             mapIter--;
         }
     }
-    if (start != NULL)
-        *start = startPos;
+    if (start != NULL) {
+        if (trimToText && textPos >= 0) {
+            *start = textPos;   // last text pos before boundary start
+        } else {
+            *start = startPos;
+        }
+    }
 
     int32 endPos = offset;
-    blocks.clear();
-    spans.clear();
+    textPos = -1;
 
     if (searchType == END || searchType == BOTH) {
         printf("GetMarkupRange: searching to the END.\n");
 
         // now search forward to matching BLOCK_END/SPAN_END from original text offset on
-        mapIter = fTextLookup->markupMap->find(searchOffset);
+        mapIter = GetNextMarkupMapIter(offset);
         if (mapIter == fTextLookup->markupMap->end()) {
             if (end != NULL)
                 *end = -1;
 
-            printf("error: could not find offset %d in lookupMap!\n", searchOffset);
+            printf("error: could not find matching next offset in lookupMap for offset %d!\n", offset);
             return B_ERROR;
         }
         classToSearch = (boundaryType == BLOCK ? MD_BLOCK_END : MD_SPAN_END);
@@ -260,44 +251,30 @@ status_t MarkdownParser::GetMarkupBoundariesAt(int32 offset, int32* start, int32
             markup_stack* markupStack = mapIter->second;
             for (auto stackItem : *markupStack) {
                 auto markupClass = stackItem->markup_class;
+
+                if (stackItem->markup_class == MD_TEXT) {
+                    textPos = stackItem->offset;
+                }
                 if (stackItem->markup_class == classToSearch) {
-                    if (resultStack != NULL) {
-                        if (! unique) {      // add all stack elements unfiltered
-                            resultStack->push_back(stackItem);
-                        } else {
-                            // search for already captured element with similar class, type and detail
-                            bool found = FindTextData(stackItem, blocks, spans);
-                            if (! found) {   // add if no similar element was found
-                                printf("    add %s item to stack.\n", GetMarkupClassName(stackItem->markup_class));
-                                resultStack->push_back(stackItem);
-                            }
-                        }
-                    }
-                    endPos = mapIter->first;
+                    endPos = stackItem->offset;
                     printf("    markup END boundary search: found markup class %s at offset %d\n",
                             GetMarkupClassName(classToSearch), endPos);
 
                     search = false;
                     break;
                 }
-                if (unique) {
-                    if (boundaryType == BLOCK) {
-                        if (stackItem->markup_class == MD_BLOCK_END) {
-                            blocks.insert({stackItem->markup_type.block_type, stackItem});
-                        }
-                    } else {
-                        if (stackItem->markup_class == MD_SPAN_END) {
-                            spans.insert({stackItem->markup_type.span_type, stackItem});
-                        }
-                    }
-                }
-
             }
             mapIter++;
         }
     }
-    if (end != NULL)
-        *end = endPos;
+
+    if (end != NULL) {
+        if (trimToText && textPos >= 0) {
+            *end = textPos;   // last text pos before boundary start
+        } else {
+            *end = endPos;
+        }
+    }
 
     printf("GetMarkupBoundary: found %s with offset %d from %d to %d.\n", boundaryType == BLOCK ? "BLOCK" : "SPAN",
         offset, startPos, endPos);
