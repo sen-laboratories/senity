@@ -54,6 +54,9 @@ EditorTextView::~EditorTextView() {
     delete fLinkFont;
     delete fCodeFont;
 
+    for (auto highlight : *fTextHighlights) {
+        free(highlight.second);
+    }
     fTextHighlights->clear();
     delete fTextHighlights;
 }
@@ -92,7 +95,7 @@ void EditorTextView::SetText(BFile* file, int32 offset, size_t size) {
 
 // hook methods
 void EditorTextView::DeleteText(int32 start, int32 finish) {
-    ClearHighlights();
+    ClearHighlights();  // TODO: only clear highlights in range
     BTextView::DeleteText(start, finish);
     MarkupText(start, finish);
     UpdateStatus();
@@ -205,6 +208,12 @@ void EditorTextView::Draw(BRect updateRect) {
     BTextView::Draw(updateRect);
 
     // redraw text highlights if any inside updateRect
+	int32 start, end;
+	GetSelection(&start, &end);
+	Select(start, start);
+
+	BTextView::Draw(updateRect);
+	Select(start, end);
 
     // TODO: optimize later via smart map lookup
     // int32 updateOffset = OffsetAt(updateRect.LeftTop());
@@ -285,13 +294,6 @@ EditorTextView::Highlight(int32 startOffset, int32 endOffset,
     highlight->outline     = outline;
 
     Invalidate(new BRegion(selRegion));
-
-    BMessage resizeMsg(B_WINDOW_RESIZED);
-    BRect windowBounds(Window()->Bounds());
-    resizeMsg.AddInt32("width", windowBounds.Width());
-    resizeMsg.AddInt32("height", windowBounds.Height());
-
-    fEditorHandler->MessageReceived(new BMessage(resizeMsg));
 }
 
 void EditorTextView::RedrawHighlight(text_highlight* highlight)

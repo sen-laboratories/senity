@@ -7,25 +7,11 @@
 #include <GraphicsDefs.h>
 #include <SupportDefs.h>
 
-#define NUM_COLORS 16
+#define NUM_COLORS 10
 
 enum COLOR_NAME{
     BLACK = 0,
-    WHITE,
-    LIGHT_RED,
-    LIGHT_GREEN,
-    LIGHT_BLUE,
-    LIGHT_YELLOW,
-    LIGHT_PURPLE,
-    LIGHT_CYAN,
-    LIGHT_GREY,
-    DARK_RED,
-    DARK_GREEN,
-    DARK_BLUE,
-    DARK_YELLOW,
-    DARK_PURPLE,
-    DARK_CYAN,
-    DARK_GREY,
+    WHITE
 };
 
 class ColorDefs {

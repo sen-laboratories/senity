@@ -10,23 +10,16 @@
 ColorDefs::ColorDefs()
 {
     int color = 0;
-    text_color[color++] = new rgb_color(make_color(0, 0, 0));
-    text_color[color++] = new rgb_color(make_color(255, 255, 255));
-    text_color[color++] = HexToRgb("10141c");
-    text_color[color++] = HexToRgb("bfbdb6");
-    text_color[color++] = HexToRgb("e6b450");
-    text_color[color++] = HexToRgb("161a24");
-    text_color[color++] = HexToRgb("6c7380");
-    text_color[color++] = HexToRgb("7fd962");
-    text_color[color++] = HexToRgb("73b8ff");
-    text_color[color++] = HexToRgb("f26d78");
-    text_color[color++] = HexToRgb("3388ff");
-    text_color[color++] = HexToRgb("80b5ff");
-    text_color[color++] = HexToRgb("e6b466");
-    text_color[color++] = HexToRgb("e6b450");
-    text_color[color++] = HexToRgb("738080");
-    text_color[color++] = HexToRgb("738066");
-    text_color[color++] = HexToRgb("10141c");
+    text_color[color++] = HexToRgb("100F0F");
+    text_color[color++] = HexToRgb("FFFCF0");
+    text_color[color++] = HexToRgb("AD8301");
+    text_color[color++] = HexToRgb("BC5215");
+    text_color[color++] = HexToRgb("AF3029");
+    text_color[color++] = HexToRgb("A02F6F");
+    text_color[color++] = HexToRgb("5E409D");
+    text_color[color++] = HexToRgb("205EA6");
+    text_color[color++] = HexToRgb("24837B");
+    text_color[color++] = HexToRgb("66800B");
 }
 
 ColorDefs::~ColorDefs()
