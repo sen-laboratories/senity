@@ -29,14 +29,7 @@ APP_MIME_SIG = application/x-vnd.senlabs-senity
 #	means this Makefile will not work correctly if two source files with the
 #	same name (source.c or source.cpp) are included from different directories.
 #	Also note that spaces in folder names do not work well with this Makefile.
-SRCS =  src/App.cpp \
-        src/ColorDefs.cpp \
-        src/MainWindow.cpp \
-        src/MarkdownParser.cpp \
-        src/EditorView.cpp \
-        src/EditorTextView.cpp \
-        src/MessageUtil.cpp \
-        src/StatusBar.cpp
+SRCS = $(wildcard src/*.cpp)
 
 #	Specify the resource definition files to use. Full or relative paths can be
 #	used.
@@ -63,7 +56,7 @@ RSRCS =
 #		you need to specify the path to the library and it's name.
 #		(e.g. for mylib.a, specify "mylib.a" or "path/mylib.a")
 
-LIBS =  be localestub tracker md4c glog gflags $(STDCPPLIBS)
+LIBS =  be localestub tracker md4c $(STDCPPLIBS)
 
 #	Specify additional paths to directories following the standard libXXX.so
 #	or libXXX.a naming scheme. You can specify full paths or paths relative

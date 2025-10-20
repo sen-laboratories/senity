@@ -5,9 +5,6 @@
 
 #include <AboutWindow.h>
 #include <Catalog.h>
-#include <iostream>
-#include <glog/logging.h>
-#include <gflags/gflags.h>
 
 #include "App.h"
 #include "MainWindow.h"
@@ -34,39 +31,32 @@ App::~App()
 void App::AboutRequested()
 {
 	BAboutWindow* about = new BAboutWindow(B_TRANSLATE_SYSTEM_NAME("SENity"), kApplicationSignature);
-	about->AddDescription(B_TRANSLATE("A simple semantic notepad for your thoughts."));
-	about->AddCopyright(2024, "Gregor B. Rosenauer");
+	about->AddDescription(B_TRANSLATE("A semantic notepad for your thoughts."));
+	about->AddCopyright(2025, "Gregor B. Rosenauer");
 	about->Show();
 }
 
 void App::ArgvReceived(int32 argc, char ** argv) {
-    // parse args, omitting logger args
-    /*or (int32 optionIdx = 0; optionIdx < argc; optionIdx++) {
-        switch (argv[optionIdx]) {
-        }
-    }*/
-
-    if (argc < 1) {
-        std::cerr << "Invalid usage, please provide at leas a file as argument." << std::endl;
-        return;
-    }
-
     BMessage refsMsg(B_REFS_RECEIVED);
-    BEntry entry(argv[1]);
-    entry_ref ref;
 
-    entry.GetRef(&ref);
-    refsMsg.AddRef("refs", &ref);
+    // currently we only treat the 1st arg as file name if it exists, else we just open a new document
+    if (argc == 0) {
+        // TODO: quick hack, needs proper window management and sending  a NEW_DOCUMENT message
+        MainWindow* mainWindow = new MainWindow();
+        mainWindow->Show();
+    } else {
+        BEntry entry(argv[1]);
+        entry_ref ref;
 
-    RefsReceived(&refsMsg);
+        entry.GetRef(&ref);
+        refsMsg.AddRef("refs", &ref);
+
+        RefsReceived(&refsMsg);
+    }
 }
 
 int main(int32 argc, char ** argv)
 {
-    gflags::ParseCommandLineFlags(&argc, &argv, true);
-    google::InitGoogleLogging("SENity");
-    LOG(INFO) << "SENity starting up." << std::endl;
-
 	App* app = new App();
 	app->Run();
 
