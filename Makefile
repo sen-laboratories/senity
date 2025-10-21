@@ -16,7 +16,7 @@ TARGET_DIR = ./generated
 TYPE = APP
 
 # 	If you plan to use localization, specify the application's MIME signature.
-APP_MIME_SIG = application/x-vnd.senlabs-senity
+APP_MIME_SIG = application/x-vnd.sen-labs.senity
 
 #	The following lines tell Pe and Eddie where the SRCS, RDEFS, and RSRCS are
 #	so that Pe and Eddie can fill them in for you.
@@ -56,7 +56,14 @@ RSRCS =
 #		you need to specify the path to the library and it's name.
 #		(e.g. for mylib.a, specify "mylib.a" or "path/mylib.a")
 
-LIBS =  be localestub tracker md4c $(STDCPPLIBS)
+LIBS =  be localestub tracker cmark-gfm cmark-gfm-extensions tree-sitter \
+		tree-sitter-c \
+		tree-sitter-cpp \
+		tree-sitter-python \
+		tree-sitter-javascript \
+		tree-sitter-rust \
+		tree-sitter-go \
+		$(STDCPPLIBS)
 
 #	Specify additional paths to directories following the standard libXXX.so
 #	or libXXX.a naming scheme. You can specify full paths or paths relative

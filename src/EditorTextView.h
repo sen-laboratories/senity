@@ -12,6 +12,7 @@
 
 #include "MarkdownParser.h"
 #include "StatusBar.h"
+#include "SyntaxHighlighter.h"
 
 const rgb_color linkColor   = ui_color(B_LINK_TEXT_COLOR);
 const rgb_color codeColor   = ui_color(B_SHADOW_COLOR);
@@ -61,14 +62,8 @@ public:
     void            ClearHighlights();
 
 private:
-    void            MarkupText(int32 start, int32 end);
-    void            StyleText(text_data* markupInfo,
-                              stack<text_run> *styleStack,
-                              BFont* font, rgb_color* color);
-
-    void            SetBlockStyle(text_data* markupInfo, BFont* font, rgb_color* color);
-    void            SetSpanStyle(text_data* markupInfo, BFont* font, rgb_color* color);
-    void            SetTextStyle(text_data* markupInfo, BFont *font, rgb_color *color);
+    void            MarkupText(const char* text);
+    void            MarkupRange(const char* text, int32 start, int32 end);
 
     BMessage*       GetOutlineAt(int32 offset, bool withNames = false);
     BMessage*       GetDocumentOutline(bool withNames = false, bool withDetails = false);
@@ -86,5 +81,6 @@ private:
     BFont*          fLinkFont;
     BFont*          fCodeFont;
 
-    map<int32, text_highlight*> *fTextHighlights;
+    std::map<int32, text_highlight*>    *fTextHighlights;
+    SyntaxHighlighter                   *fSyntaxHighlighter;
 };

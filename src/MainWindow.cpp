@@ -118,7 +118,39 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgNewFile:
 		{
 			fSaveMenuItem->SetEnabled(false);
-			printf("New\n");
+			    const char* markdown = R"(
+# My Document
+
+This is a **bold** statement with some `inline code`.
+
+## Code Example
+
+Here's some C++ code:
+
+```cpp
+#include <iostream>
+
+int main() {
+    std::cout << "Hello, World!" << std::endl;
+    return 0;
+}
+```
+
+## Python Example
+
+```python
+def hello_world():
+    print("Hello, World!")
+    return True
+```
+
+### Features
+
+- Syntax highlighting
+- Outline navigation
+- Fast incremental parsing
+)";
+            fEditorView->SetText(markdown);
 		} break;
 
 		case kMsgOpenFile:

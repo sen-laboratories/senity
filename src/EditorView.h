@@ -21,6 +21,7 @@ public:
     virtual void    MessageReceived(BMessage* message);
 
     void            SetText(BFile *file, size_t size);
+    void            SetText(const char* text);
 
 private:
     EditorTextView* fTextView;

@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include <Window.h>
 
+#include "MarkdownParser.h"
+#include "SyntaxHighlighter.h"
 #include "EditorTextView.h"
 #include "Messages.h"
 #include "MessageUtil.h"
@@ -25,7 +27,7 @@ EditorTextView::EditorTextView(StatusBar *statusBar, BHandler *editorHandler)
 	SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
 	SetLowUIColor(ViewUIColor());
 
-    MakeEditable(false); //TODO: add edit support!
+    MakeEditable(true);
     SetStylable(true);
     SetDoesUndo(true);
     SetWordWrap(false);
@@ -34,14 +36,39 @@ EditorTextView::EditorTextView(StatusBar *statusBar, BHandler *editorHandler)
     fStatusBar = statusBar;
     fEditorHandler = editorHandler;
 
-    // setup fonts
-    fTextFont = new BFont(be_plain_font);
-    fLinkFont = new BFont(be_plain_font);
-    fCodeFont = new BFont(be_fixed_font);
-
-    // setup markdown syntax styler
+    // setup markdown syntax parser and styler
     fMarkdownParser = new MarkdownParser();
-    fMarkdownParser->Init();
+
+    // Setup fonts
+    BFont textFont(be_plain_font);
+    BFont codeFont(be_fixed_font);
+    BFont headingFont(be_bold_font);
+
+    for (int i = 1; i <= 6; i++) {
+        headingFont.SetSize(24 - (i - 1) * 2);
+        fMarkdownParser->SetHeadingFont(i, headingFont);
+    }
+
+    /* Initialize styles - reuse your existing style setup
+    fTextStyle.color = {0, 0, 0, 255};
+    fTextStyle.spacing = 1.2f;
+
+    fCodeStyle.color = {60, 60, 60, 255};
+    fCodeStyle.spacing = 1.0f;
+
+    // Setup heading styles
+    for (int i = 0; i < 6; i++) {
+        fHeadingStyles[i].color = {0, 0, 0, 255};
+        fHeadingStyles[i].font = *be_bold_font;
+        fHeadingStyles[i].font.SetSize(24 - i * 2);
+    }*/
+
+    fMarkdownParser->SetTextFont(textFont);
+    fMarkdownParser->SetCodeFont(codeFont);
+
+    // Enable syntax highlighting
+    fSyntaxHighlighter = new SyntaxHighlighter();
+    fMarkdownParser->SetSyntaxHighlighter(fSyntaxHighlighter);
 
     fTextHighlights = new map<int32, text_highlight*>();
 }
@@ -50,9 +77,7 @@ EditorTextView::~EditorTextView() {
     RemoveSelf();
 
     delete fMarkdownParser;
-    delete fTextFont;
-    delete fLinkFont;
-    delete fCodeFont;
+    delete fSyntaxHighlighter;
 
     for (auto highlight : *fTextHighlights) {
         free(highlight.second);
@@ -81,23 +106,29 @@ void EditorTextView::MessageReceived(BMessage* message) {
 
 void EditorTextView::SetText(const char* text, const text_run_array* runs) {
     ClearHighlights();
+
     BTextView::SetText(text, runs);
     MarkupText(0, TextLength());
+
     UpdateStatus();
 }
 
 void EditorTextView::SetText(BFile* file, int32 offset, size_t size) {
     ClearHighlights();
+
     BTextView::SetText(file, offset, size);
     MarkupText(offset, TextLength());
+
     UpdateStatus();
 }
 
 // hook methods
 void EditorTextView::DeleteText(int32 start, int32 finish) {
     ClearHighlights();  // TODO: only clear highlights in range
+
     BTextView::DeleteText(start, finish);
     MarkupText(start, finish);
+
     UpdateStatus();
 }
 
@@ -362,361 +393,265 @@ void EditorTextView::UpdateStatus() {
     fStatusBar->UpdateOutline(outline);
 }
 
-BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames) {
-    int32 blockOffset;
-    outline_map* outlineMap = fMarkdownParser->GetOutlineAt(offset);
-
-    BMessage *outlineMsg = new BMessage('Tout');
-
-    if (outlineMap == NULL || outlineMap->empty()) {
-        printf("no outline at offset %d\n", offset);
-        return outlineMsg;
-    }
-
-    printf("GetOutline: got outline map at offset %d with %zu elements.\n", offset, outlineMap->size());
-
-    // internal API using efficient info exchange via pointers
-    for (auto item : *outlineMap) {
-        outlineMsg->AddPointer(item.first, item.second);
-    }
-    printf("got outline:\n");
-    outlineMsg->PrintToStream();
-
-    return outlineMsg;
-}
-
-BMessage* EditorTextView::GetDocumentOutline(bool withDetails, bool withNames) {
-    BMessage *outlineMsg = new BMessage('Tout');
-    bool addOffset = false;
-
-    for (auto mapItem : *(fMarkdownParser->GetMarkupMap())) {
-        for (auto item : *mapItem.second) {
-            switch (item->markup_class) {
-                case MD_BLOCK_BEGIN: {
-                    outlineMsg->AddUInt8("block:type", item->markup_type.block_type);
-                    if (withDetails) {
-                        outlineMsg->AddMessage("block:detail", new BMessage(*item->detail));
-                    }
-                    if (withNames) {
-                        BString blockName = MarkdownParser::GetBlockTypeName(item->markup_type.block_type);
-                        // for Header, add level like in HTML (H1...H6)
-                        if (item->markup_type.block_type == MD_BLOCK_H) {
-                            uint8 level = item->detail->GetUInt8("level", 0);
-                            blockName << level;
-                        }
-                        outlineMsg->AddString("block:name", blockName.String());
-                    }
-                    addOffset = true;
-                    break;
-                }
-                case MD_SPAN_BEGIN: {
-                    outlineMsg->AddUInt8("span:type", item->markup_type.span_type);
-                    if (withDetails) {
-                        outlineMsg->AddMessage("span:detail", new BMessage(*item->detail));
-                    }
-                    if (withNames) {
-                        outlineMsg->AddString("span:name", MarkdownParser::GetSpanTypeName(item->markup_type.span_type));
-                    }
-                    addOffset = true;
-                    break;
-                }
-                case MD_TEXT: {
-                    outlineMsg->AddUInt8("text:type", item->markup_type.text_type);
-                    // MD4C returns no detail for TEXT but let's stay generic here
-                    if (withDetails) {
-                        outlineMsg->AddMessage("text:detail", new BMessage());
-                    }
-                    if (withNames) {
-                        outlineMsg->AddString("text:name", MarkdownParser::GetTextTypeName(item->markup_type.text_type));
-                    }
-                    addOffset = true;
-                    break;
-                }
-                default: {
-                    // noop
-                    printf("ignoring markup type %s\n", MarkdownParser::GetMarkupClassName(item->markup_class));
-                    break;
-                }
-            }
-            if (addOffset) {
-                // reference to location inside text
-                outlineMsg->AddInt32("offset", item->offset);
-                addOffset = false;
-            }
-        }
-    }
-    return outlineMsg;
-}
-
 // interaction with MarkupStyler - should become its own class later
-void EditorTextView::MarkupText(int32 start, int32 end) {
-    if (TextLength() == 0) {
+void EditorTextView::MarkupText(const char* markdown) {
+    if (TextLength() == 0 || markdown == null || strlen(markdown) == 0) ) {
         return;
     }
-    int32 blockStart, blockEnd;
-    // extend to block offsets for start and end so markup can be determined and styled correctly
-    // since we have 2 possibly overlapping boundaries for block around start and end offset from edit,
-    // we need to use temp vars here and just take the first start boundary and the last end boundary.
-    int32 from, to;
-    if (start > 0) {
-        fMarkdownParser->GetMarkupBoundariesAt(start, &from, &to);
-        blockStart = from;
-    } else {
-        blockStart = 0;
+
+    // Parse full text
+    if (!fMarkdownParser->ParseMarkdown(markdown)) {
+        // Handle error
+        return;
     }
-    if (end < TextLength()) {
-        fMarkdownParser->GetMarkupBoundariesAt(end, &from, &to, BLOCK, END);
-        blockEnd = to;
-    } else {
-        blockEnd = TextLength();
-    }
-    int32 size = blockEnd - blockStart;
 
-    printf("markup text %d - %d\n", blockStart, blockEnd);
-    // clear the map section affected by the parser update
-    fMarkdownParser->ClearTextInfo(start, end);
+    // TODO: handle render text WITH or WITHOUT markdown syntax!
+    //       for styled edit without markup, set the plain text in BTextView
+    //SetText(parser.GetPlainText().String());
 
-    BString textStr("", size);
-    char* text = textStr.LockBuffer(size);
-    GetText(blockStart, size, text);
-    textStr.UnlockBuffer();
+    // Apply all styling
+    const std::vector<TextRun>& runs = fMarkdownParser->GetTextRuns();
+    for (const TextRun& run : runs) {
+        // Use BTextView's text_run_array to apply styling
+        SetFontAndColor(run.offset, run.offset + run.length,
+                       &run.font, B_FONT_ALL,
+                       &run.color);
 
-    // perform a partial or complete update of the text map
-    fMarkdownParser->Parse(text, size);
-
-    printf("\n*** parsing finished, now styling... ***\n");
-
-    // we need to use a stack for caching the last active block/span style to return to on BLOCK_END or SPAN_END,
-    // since we cannot simply "undo" the last style, as they might be stacked inside each other.
-    // see https://github.com/mity/md4c/wiki/Embedding-Parser%3A-Calling-MD4C#typical-implementation
-    BFont font(be_fixed_font);
-    rgb_color color(textColor);
-    stack<text_run> styleStack;
-
-    // process all text map items in the parsed text
-    for (auto info : *(fMarkdownParser->GetMarkupMap())) {
-        auto item = *info.second->begin();
-        // reset for text-only parts
-        if (info.second->size() == 1 && item->markup_class == MD_TEXT) {
-            font = *fTextFont;
-            color = textColor;
-        }
-        // process all markup stack items at this map offset
-        for (auto stackItem : *info.second) {
-            StyleText(stackItem, &styleStack, &font, &color);
+        // Apply syntax highlighting for code blocks
+        if (run.type == TextRun::CODE_BLOCK && !run.language.IsEmpty()) {
+            HighlightCodeBlock(run.offset, run.length, run.language.String());
         }
     }
 
-    printf("DocumentOutline:\n");
-    GetDocumentOutline(true)->PrintToStream();
+    // Store outline for navigation
+    fOutline = fMarkdownParser->GetOutline();
 }
 
-void EditorTextView::StyleText(text_data* markupData,
-                               stack<text_run> *styleStack,
-                               BFont* font, rgb_color* color) {
-    const char *typeInfo;
+void EditorTextView::MarkupRange(const char* markdown, int startLine, int endLine)
+{
+    // Parse just the updated range
+    if (!fMarkdownParser->ParseIncrementalUpdate(startLine, endLine, markdown)) {
+        // Fall back to full update
+        SetMarkdownText(markdown);
+        return;
+    }
 
-    switch (markupData->markup_class) {
-        case MD_BLOCK_BEGIN:
-        case MD_SPAN_BEGIN: {
-            if (markupData->markup_class == MD_BLOCK_BEGIN) {
-                SetBlockStyle(markupData, font, color);
-            }
-            else {
-                SetSpanStyle(markupData, font, color);
-            }
-            text_run run;
-            run.color = *color;
-            run.font  = *font;
-            styleStack->push(text_run(run));
-            printf("> pushing %s style -> %zu runs.\n", MarkdownParser::GetMarkupClassName(markupData->markup_class),
-                styleStack->size());
-            break;
+    // Get the text offset for the start line
+    int32 startOffset = fMarkdownParser->GetTextOffsetForLine(startLine);
+    int32 endOffset = fMarkdownParser->GetTextOffsetForLine(endLine + 1);
+
+    if (endOffset == 0) {
+        endOffset = TextLength();
+    }
+
+    // Delete old text range
+    Delete(startOffset, endOffset);
+
+    // Insert new styled text
+    Insert(startOffset, fMarkdownParser->GetPlainText().String(), fMarkdownParser->GetPlainText().Length());
+
+    // Re-apply styles to the updated range
+    const std::vector<TextRun>& runs = fMarkdownParser->GetTextRuns();
+    for (const TextRun& run : runs) {
+        if (run.offset >= startOffset) {
+            SetFontAndColor(run.offset, run.offset + run.length,
+                           &run.font, B_FONT_ALL,
+                           &run.color);
         }
-        case MD_BLOCK_END:
-        case MD_SPAN_END: {
-            if (!styleStack->empty()) {
-                text_run run = styleStack->top();
-                *font = run.font;
-                *color = run.color;
-
-                styleStack->pop();
-            }
-            printf("< popping %s style -> %zu runs.\n", MarkdownParser::GetMarkupClassName(markupData->markup_class),
-                styleStack->size());
-            break;
-        }
-        case MD_TEXT: {         // here the styles set before are actually applied to rendered text
-            int32 start   = markupData->offset;
-            int32 end     = start + markupData->length;
-
-            // reset for text-only parts
-            if (styleStack->size() == 0) {
-                *font = *fTextFont;
-                *color = textColor;
-            }
-
-            SetTextStyle(markupData, font, color);
-            SetFontAndColor(start, end, font, B_FONT_ALL, color);
-
-            typeInfo = MarkdownParser::GetTextTypeName(markupData->markup_type.text_type);
-            printf("StyleText @%d - %d: applied style for class %s and type %s\n",
-                start, end, MarkdownParser::GetMarkupClassName(markupData->markup_class), typeInfo);
-
-            break;
-        }
-        default:
-            break;
     }
 }
 
-void EditorTextView::SetBlockStyle(text_data* markupInfo, BFont *font, rgb_color *color) {
-    MD_BLOCKTYPE blockType = markupInfo->markup_type.block_type;
-    const char* blockTypeName = MarkdownParser::GetBlockTypeName(blockType);
+// Example: Syntax highlighting integration point
+void EditorTextView::HighlightCodeBlock(int32 offset, int32 length, const char* language)
+{
+    // This is where you'd plug in your syntax highlighter
+    // The parser gives you the code block location and language
 
-    printf("> SetBlockStyle for %s\n", blockTypeName);
+    if (fSyntaxHighlighter) {
+        BString code;
+        GetText(offset, length, code.LockBuffer(length));
+        code.UnlockBuffer();
 
-    switch (blockType) {
-        case MD_BLOCK_CODE: {
-            *font = *fCodeFont;
-            *color = codeColor;
-            break;
+        std::vector<SyntaxToken> tokens = fSyntaxHighlighter->Tokenize(code.String(), language);
+
+        for (const SyntaxToken& token : tokens) {
+            rgb_color color = GetColorForTokenType(token.type);
+            SetFontAndColor(offset + token.offset,
+                           offset + token.offset + token.length,
+                           nullptr, 0, &color);
         }
-        case MD_BLOCK_H: {
-            *font = fTextFont;
-            uint8 level;
-            BMessage *detail = markupInfo->detail;
-            if (detail == NULL) {
-                printf("    bogus markup, no detail found for H block!\n");
-            } else if (detail->FindUInt8("level", &level) == B_OK) {
-                float headerSizeFac = (7 - level) / 3.2;       // max 6 levels in markdown
-                font->SetSize(font->Size() * headerSizeFac);   // H1 = 2*normal size
-                font->SetFace(B_HEAVY_FACE);
-            }
-            *color = headerColor;
-            break;
-        }
-        case MD_BLOCK_QUOTE: {
-            *font = fTextFont;
-            font->SetFace(font->Face() | B_ITALIC_FACE);
-            *color = codeColor;
-            break;
-        }
-        case MD_BLOCK_HR: {
-            *font = *fTextFont;
-            *color = headerColor;
-            font->SetFace(font->Face() | B_LIGHT_FACE);
-            break;
-        }
-        case MD_BLOCK_HTML: {
-            *font = fCodeFont;
-            *color = codeColor;
-            break;
-        }
-        case MD_BLOCK_UL: {
-            *font = fTextFont;
-            *color = textColor;
-            break;
-        }
-        case MD_BLOCK_OL: {
-            *font = fTextFont;
-            *color = textColor;
-            break;
-        }
-        case MD_BLOCK_LI: {
-            *font = fTextFont;
-            *color = linkColor;
-            break;
-        }
-        case MD_BLOCK_P: {
-            *font = fTextFont;
-            *color = textColor;
-            break;
-        }
-        case MD_BLOCK_TABLE: {
-            *font = fCodeFont;
-            *color = codeColor;
-            break;
-        }
-        default:
-            break;
     }
 }
 
-void EditorTextView::SetSpanStyle(text_data* markupInfo, BFont *font, rgb_color *color) {
-    MD_SPANTYPE spanType = markupInfo->markup_type.span_type;
-    const char* spanTypeName = MarkdownParser::GetSpanTypeName(spanType);
+// Helper to apply a run
+void EditorTextView::ApplyTextRun(const TextRun& run)
+{
+    SetFontAndColor(run.offset, run.offset + run.length,
+                   &run.font, B_FONT_ALL, &run.color);
 
-    printf("> SetSpanStyle for %s\n", spanTypeName);
-
-    switch (spanType) {
-        case MD_SPAN_A:
-        case MD_SPAN_WIKILINK: {    // fallthrough
-            font->SetFace(font->Face() | B_UNDERSCORE_FACE);
-            *color = linkColor;
-            break;
-        }
-        case MD_SPAN_IMG: {
-            font->SetFace(font->Face() | B_REGULAR_FACE);
-            *color = linkColor;
-            break;
-        }
-        case MD_SPAN_CODE: {
-            font->SetFace(font->Face() | B_REGULAR_FACE);
-            *color = codeColor;
-            break;
-        }
-        case MD_SPAN_DEL: {
-            font->SetFace(font->Face() | B_STRIKEOUT_FACE);
-            *color = codeColor;
-            break;
-        }
-        case MD_SPAN_U: {
-            font->SetFace(font->Face() | B_UNDERSCORE_FACE);
-            *color = textColor;
-            break;
-        }
-        case MD_SPAN_STRONG: {
-            font->SetFace(font->Face() | B_BOLD_FACE);
-            *color = textColor;
-            break;
-        }
-        case MD_SPAN_EM: {
-            font->SetFace(font->Face() | B_ITALIC_FACE);
-            *color = textColor;
-            break;
-        }
-        default:
-            font->SetFace(font->Face() | B_REGULAR_FACE);
-            *color = textColor;
-            break;
+    // Special handling for code blocks with syntax highlighting
+    if (run.type == TextRun::CODE_BLOCK && !run.language.IsEmpty()) {
+        HighlightCodeBlock(run.offset, run.length, run.language.String());
     }
 }
 
-void EditorTextView::SetTextStyle(text_data* markupInfo, BFont *font, rgb_color *color) {
-    MD_TEXTTYPE textType = markupInfo->markup_type.text_type;
+void EditorTextView::ShowOutlineMenu()
+{
+    BPoint point = fTextView->PointAt(fTextView->SelectionStart());
+    fTextView->ConvertToScreen(&point);
 
-    switch (textType) {
-        case MD_TEXT_CODE: {
-            font->SetSpacing(B_FIXED_SPACING);
-            *color = codeColor;
-            break;
+    BPopUpMenu* menu = new BPopUpMenu("outline");
+    BuildOutlineMenu(&fOutline, menu);
+
+    BMenuItem* selected = menu->Go(point, false, true);
+    if (selected && selected->Message()) {
+        int32 offset;
+        if (selected->Message()->FindInt32("offset", &offset) == B_OK) {
+            fTextView->Select(offset, offset);
+            fTextView->ScrollToSelection();
         }
-        case MD_TEXT_HTML: {
-            font->SetSpacing(B_FIXED_SPACING);
-            *color = linkColor;
-            break;
+    }
+
+    delete menu;
+}
+
+void EditorTextView::BuildOutlineMenu(BMessage* outline, BMenu* menu)
+{
+    int32 index = 0;
+    BMessage child;
+
+    while (outline->FindMessage("children", index, &child) == B_OK) {
+        BString text;
+        int32 offset;
+
+        child.FindString("text", &text);
+        child.FindInt32("offset", &offset);
+
+        BMessage* msg = new BMessage('GOTO');
+        msg->AddInt32("offset", offset);
+
+        // Check for nested children
+        int32 childCount = 0;
+        type_code type;
+        child.GetInfo("children", &type, &childCount);
+
+        if (childCount > 0) {
+            BMenu* submenu = new BMenu(text.String());
+            BuildOutlineMenu(&child, submenu);
+            menu->AddItem(submenu);
+        } else {
+            menu->AddItem(new BMenuItem(text.String(), msg));
         }
-        case MD_TEXT_NORMAL: {
-            // use span/block style here!
-            break;
-        }
-        default:
-            *font = *fTextFont;
-            *color = textColor;
-            break;
+
+        index++;
     }
 }
+
+void PrintOutline(BMessage* outline, int indent = 0)
+{
+    int32 index = 0;
+    BMessage child;
+
+    while (outline->FindMessage("children", index, &child) == B_OK) {
+        BString text;
+        int32 level, line, offset;
+
+        child.FindString("text", &text);
+        child.FindInt32("level", &level);
+        child.FindInt32("line", &line);
+        child.FindInt32("offset", &offset);
+
+        // Print with indentation
+        for (int i = 0; i < indent; i++) {
+            printf("  ");
+        }
+        printf("H%d: %s (line %d, offset %d)\n", level, text.String(), line, offset);
+
+        // Recursively print children
+        PrintOutline(&child, indent + 1);
+
+        index++;
+    }
+}
+
+// Get all siblings at current level
+void GetSiblings(BMessage* parent, int32 targetLevel, std::vector<BString>& siblings)
+{
+    int32 index = 0;
+    BMessage child;
+
+    while (parent->FindMessage("children", index, &child) == B_OK) {
+        int32 level;
+        BString text;
+
+        if (child.FindInt32("level", &level) == B_OK && level == targetLevel) {
+            child.FindString("text", &text);
+            siblings.push_back(text);
+        }
+
+        index++;
+    }
+}
+
+// Navigate to next sibling at same level
+BMessage* FindNextSibling(BMessage* outline, int32 currentOffset, int32 currentLevel)
+{
+    int32 index = 0;
+    BMessage child;
+    bool foundCurrent = false;
+
+    while (outline->FindMessage("children", index, &child) == B_OK) {
+        int32 offset, level;
+        child.FindInt32("offset", &offset);
+        child.FindInt32("level", &level);
+
+        if (foundCurrent && level == currentLevel) {
+            return &child; // Next sibling found
+        }
+
+        if (offset == currentOffset) {
+            foundCurrent = true;
+        }
+
+        // Check nested children
+        if (!foundCurrent) {
+            BMessage* nested = FindNextSibling(&child, currentOffset, currentLevel);
+            if (nested) return nested;
+        }
+
+        index++;
+    }
+
+    return nullptr;
+}
+
+// Build breadcrumb trail: Chapter 1 > Section 1.2 > Subsection 1.2.1
+void BuildBreadcrumbs(BMessage* outline, int32 targetOffset, std::vector<BString>& crumbs)
+{
+    int32 index = 0;
+    BMessage child;
+
+    while (outline->FindMessage("children", index, &child) == B_OK) {
+        int32 offset;
+        BString text;
+
+        child.FindInt32("offset", &offset);
+        child.FindString("text", &text);
+
+        // Check if target is within this heading's range
+        // (would need to track end offsets in real implementation)
+        if (offset <= targetOffset) {
+            crumbs.push_back(text);
+
+            // Recursively search children
+            BuildBreadcrumbs(&child, targetOffset, crumbs);
+            return;
+        }
+
+        index++;
+    }
+}
+
 
 // utility functions
 void EditorTextView::BuildContextMenu() {

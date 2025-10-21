@@ -72,3 +72,7 @@ void EditorView::MessageReceived(BMessage* message) {
 void EditorView::SetText(BFile* file, size_t size) {
     fTextView->SetText(file, 0, size);
 }
+
+void EditorView::SetText(const char* text) {
+    fTextView->SetText(text);
+}
