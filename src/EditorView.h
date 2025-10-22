@@ -1,8 +1,7 @@
 /*
- * Copyright 2024, Gregor B. Rosenauer <gregor.rosenauer@gmail.com>
+ * Copyright 2024-2025, Gregor B. Rosenauer <gregor.rosenauer@gmail.com>
  * All rights reserved. Distributed under the terms of the MIT license.
  */
-
 #pragma once
 
 #include <GroupView.h>

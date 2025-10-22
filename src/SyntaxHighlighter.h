@@ -1,6 +1,12 @@
+/*
+ * Copyright 2024-2025, Gregor B. Rosenauer <gregor.rosenauer@gmail.com>
+ * All rights reserved. Distributed under the terms of the MIT license.
+ */
 #pragma once
 
+#include <GraphicsDefs.h>
 #include <String.h>
+
 #include <map>
 #include <vector>
 
@@ -68,9 +74,4 @@ private:
     // Tree-sitter processing
     void ProcessNode(TSNode node, const char* source, std::vector<SyntaxToken>& tokens);
     SyntaxToken::Type ClassifyNode(TSNode node, const char* source);
-
-    // Node type string helpers
-    bool IsKeyword(const char* type) const;
-    bool IsType(const char* type) const;
-    bool IsFunction(const char* type) const;
 };

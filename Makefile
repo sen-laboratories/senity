@@ -56,7 +56,8 @@ RSRCS =
 #		you need to specify the path to the library and it's name.
 #		(e.g. for mylib.a, specify "mylib.a" or "path/mylib.a")
 
-LIBS =  be localestub tracker cmark-gfm cmark-gfm-extensions tree-sitter \
+LIBS =  be localestub tracker cmark-gfm cmark-gfm-extensions
+		tree-sitter \
 		tree-sitter-c \
 		tree-sitter-cpp \
 		tree-sitter-python \
@@ -70,17 +71,17 @@ LIBS =  be localestub tracker cmark-gfm cmark-gfm-extensions tree-sitter \
 #	to the Makefile. The paths included are not parsed recursively, so
 #	include all of the paths where libraries must be found. Directories where
 #	source files were specified are	automatically included.
-LIBPATHS = lib
+LIBPATHS = $(shell findpaths -ep $HOME/config/non-packaged B_FIND_PATH_DEVELOP_LIB_DIRECTORY)
 
 #	Additional paths to look for system headers. These use the form
 #	"#include <header>". Directories that contain the files in SRCS are
 #	NOT auto-included here.
-SYSTEM_INCLUDE_PATHS = $(shell findpaths -e B_FIND_PATH_HEADERS_DIRECTORY private/interface)
+SYSTEM_INCLUDE_PATHS = $(shell findpaths -e B_FIND_PATH_HEADERS_DIRECTORY && findpaths -e B_FIND_PATH_HEADERS_DIRECTORY private/interface)
 
 #	Additional paths paths to look for local headers. These use the form
 #	#include "header". Directories that contain the files in SRCS are
 #	automatically included.
-LOCAL_INCLUDE_PATHS = src/include
+LOCAL_INCLUDE_PATHS =
 
 #	Specify the level of optimization that you want. Specify either NONE (O0),
 #	SOME (O1), FULL (O2), or leave blank (for the default optimization level).
