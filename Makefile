@@ -56,7 +56,7 @@ RSRCS =
 #		you need to specify the path to the library and it's name.
 #		(e.g. for mylib.a, specify "mylib.a" or "path/mylib.a")
 
-LIBS =  be localestub tracker cmark-gfm cmark-gfm-extensions
+LIBS =  be localestub tracker cmark-gfm cmark-gfm-extensions \
 		tree-sitter \
 		tree-sitter-c \
 		tree-sitter-cpp \
@@ -71,7 +71,7 @@ LIBS =  be localestub tracker cmark-gfm cmark-gfm-extensions
 #	to the Makefile. The paths included are not parsed recursively, so
 #	include all of the paths where libraries must be found. Directories where
 #	source files were specified are	automatically included.
-LIBPATHS = $(shell findpaths -ep $HOME/config/non-packaged B_FIND_PATH_DEVELOP_LIB_DIRECTORY)
+LIBPATHS = $(HOME)/config/non-packaged/lib
 
 #	Additional paths to look for system headers. These use the form
 #	"#include <header>". Directories that contain the files in SRCS are
@@ -115,7 +115,7 @@ SYMBOLS := TRUE
 DEBUGGER := TRUE
 
 #	Specify any additional compiler flags to be used.
-COMPILER_FLAGS =
+COMPILER_FLAGS = -std=c++20
 
 #	Specify any additional linker flags to be used.
 LINKER_FLAGS =

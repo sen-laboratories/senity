@@ -14,7 +14,7 @@
 #include "SyntaxHighlighter.h"
 
 const rgb_color linkColor   = ui_color(B_LINK_TEXT_COLOR);
-const rgb_color codeColor   = ui_color(B_SHADOW_COLOR);
+const rgb_color codeColor = {80, 80, 80, 255};  // Dark gray
 const rgb_color textColor   = ui_color(B_DOCUMENT_TEXT_COLOR);
 const rgb_color headerColor = ui_color(B_CONTROL_HIGHLIGHT_COLOR);  // todo: use tinting
 

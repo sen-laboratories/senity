@@ -11,8 +11,8 @@
 #include <map>
 
 extern "C" {
-    #include <cmark/cmark-gfm.h>
-    #include <cmark/cmark-gfm-core-extensions.h>
+#include <cmark/cmark-gfm.h>
+#include <cmark/cmark-gfm-core-extensions.h>
 }
 
 class SyntaxHighlighter;
@@ -71,6 +71,9 @@ public:
     // Main parsing - scans markdown and creates style runs
     // The original text is NOT modified
     bool Parse(const char* markdownText);
+
+    // Incremental update - only re-parse changed lines
+    bool ParseIncremental(const char* markdownText, int32 startLine, int32 endLine);
 
     // Get style runs for rendering
     const std::vector<StyleRun>& GetStyleRuns() const { return fStyleRuns; }

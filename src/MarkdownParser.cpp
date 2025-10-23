@@ -1,10 +1,7 @@
-/*
- * Copyright 2024-2025, Gregor B. Rosenauer <gregor.rosenauer@gmail.com>
- * All rights reserved. Distributed under the terms of the MIT license.
- */
 #include "MarkdownParser.h"
 #include "SyntaxHighlighter.h"
 #include <cstring>
+#include <algorithm>
 
 MarkdownParser::MarkdownParser()
     : fDocument(nullptr)
@@ -133,6 +130,12 @@ bool MarkdownParser::Parse(const char* markdownText)
     BuildOutline();
 
     return true;
+}
+
+bool MarkdownParser::ParseIncremental(const char* markdownText, int32 startLine, int32 endLine)
+{
+    // Simple wrapper - just do full parse for now
+    return Parse(markdownText);
 }
 
 void MarkdownParser::ProcessNode(cmark_node* node, const char* sourceText)
@@ -461,7 +464,7 @@ int32 MarkdownParser::GetNodeStartOffset(cmark_node* node, const char* sourceTex
     int startLine = cmark_node_get_start_line(node);
     int startColumn = cmark_node_get_start_column(node);
 
-    // Calculate byte offset from line/column
+    // cmark columns are 1-indexed, we need 0-indexed
     int32 offset = 0;
     int currentLine = 1;
     int currentColumn = 1;
@@ -495,7 +498,7 @@ int32 MarkdownParser::GetNodeEndOffset(cmark_node* node, const char* sourceText)
 
     for (const char* p = sourceText; *p; p++, offset++) {
         if (currentLine == endLine && currentColumn == endColumn) {
-            return offset;
+            return offset + 1;  // <-- Include the last character!
         }
 
         if (*p == '\n') {
