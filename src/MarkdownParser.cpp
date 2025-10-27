@@ -134,8 +134,33 @@ bool MarkdownParser::Parse(const char* markdownText)
 
 bool MarkdownParser::ParseIncremental(const char* markdownText, int32 startLine, int32 endLine)
 {
-    // Simple wrapper - just do full parse for now
-    return Parse(markdownText);
+    if (!markdownText) {
+        return false;
+    }
+
+    // Calculate byte offsets for the affected range
+    int32 startOffset = 0;
+    int32 endOffset = strlen(markdownText);
+
+    int32 currentLine = 1;
+    for (const char* p = markdownText; *p; p++) {
+        if (currentLine == startLine) {
+            startOffset = p - markdownText;
+        }
+        if (currentLine == endLine + 1) {
+            endOffset = p - markdownText;
+            break;
+        }
+        if (*p == '\n') {
+            currentLine++;
+        }
+    }
+
+    if (!Parse(markdownText)) {
+        return false;
+    }
+
+    return true;
 }
 
 void MarkdownParser::ProcessNode(cmark_node* node, const char* sourceText)

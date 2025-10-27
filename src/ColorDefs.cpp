@@ -39,7 +39,7 @@ rgb_color* ColorDefs::HexToRgb(const char* hexStr)
     int len = strlen(hexStr);
     if (len != 6 && len != 8) {   // only allow RGB or RGBA
         printf("illegal argument %s, resorting to default black.\n", hexStr);
-        return text_color[BLACK];
+        return text_color[COLOR_BLACK];
     }
 
     int rgb[4];
@@ -52,6 +52,5 @@ rgb_color* ColorDefs::HexToRgb(const char* hexStr)
     // add default alpha if not provided
     if (len == 6) rgb[3] = 255;
 
-    printf("color for hex %s in RGB is %d, %d, %d\n", hexStr, rgb[0], rgb[1], rgb[2]);
     return new rgb_color(make_color(rgb[0], rgb[1], rgb[2], rgb[3]));
 }

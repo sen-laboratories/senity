@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include <Cursor.h>
 #include <PopUpMenu.h>
 #include <stack>
 #include <SupportDefs.h>
@@ -14,10 +15,13 @@
 #include "SyntaxHighlighter.h"
 
 const rgb_color linkColor   = ui_color(B_LINK_TEXT_COLOR);
-const rgb_color codeColor = {80, 80, 80, 255};  // Dark gray
+const rgb_color codeColor   = {80, 80, 80, 255};  // Dark gray
 const rgb_color textColor   = ui_color(B_DOCUMENT_TEXT_COLOR);
 const rgb_color backgroundColor = ui_color(B_DOCUMENT_BACKGROUND_COLOR);
 const rgb_color headerColor = ui_color(B_CONTROL_HIGHLIGHT_COLOR);  // todo: use tinting
+
+const BCursor linkCursor        = BCursor(B_CURSOR_ID_FOLLOW_LINK);
+const BCursor contextMenuCursor = BCursor(B_CURSOR_ID_CONTEXT_MENU);
 
 class EditorTextView : public BTextView {
 
@@ -66,7 +70,9 @@ private:
     void            AdjustHighlightsForDelete(int32, int32);
 
     void            MarkupText(const char* text);
-    void            MarkupRange(const char* text, int32 start, int32 end);
+    void            MarkupRange(int32 startLine,   int32 endLine,
+                                int32 startOffset, int32 endOffset);
+    void            CalculateAndMarkupRange(int32 offset, int32 length);
 
     BMessage*       GetOutlineAt(int32 offset, bool withNames = false);
     BMessage*       GetDocumentOutline(bool withNames = false, bool withDetails = false);

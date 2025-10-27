@@ -3,8 +3,10 @@
  * All rights reserved. Distributed under the terms of the MIT license.
  */
 
+#include "ColorDefs.h"
 #include "EditorTextView.h"
 
+#include <iostream>
 #include <Clipboard.h>
 #include <File.h>
 #include <MenuItem.h>
@@ -165,41 +167,101 @@ void EditorTextView::SetText(const char* text, const text_run_array* runs)
 void EditorTextView::DeleteText(int32 start, int32 finish)
 {
     BTextView::DeleteText(start, finish);
-
-    // Partial re-parse
-    const char* text = Text();
-    if (text && fMarkdownParser) {
-        int32 line = fMarkdownParser->GetLineForOffset(start);
-        int32 endLine = fMarkdownParser->GetLineForOffset(finish);
-
-        // Re-parse affected region
-        MarkupRange(text, line, endLine);
-    }
+    CalculateAndMarkupRange(start, finish - start);
 
     UpdateStatus();
 }
 
-void EditorTextView::InsertText(const char* text, int32 length, int32 offset,
-                                 const text_run_array* runs)
+void EditorTextView::InsertText(const char* text, int32 length, int32 offset, const text_run_array* runs)
 {
     BTextView::InsertText(text, length, offset, runs);
-
-    // Partial re-parse first to get correct styling
-    const char* fullText = Text();
-    if (fullText && fMarkdownParser) {
-        int32 startLine = fMarkdownParser->GetLineForOffset(offset);
-        int32 endLine = fMarkdownParser->GetLineForOffset(offset + length);
-
-        // Re-parse affected region - this does full parse now (safer)
-        MarkupRange(fullText, startLine, endLine);
-    }
+    CalculateAndMarkupRange(offset, length);
 
     UpdateStatus();
+}
+
+void EditorTextView::CalculateAndMarkupRange(int32 offset, int32 length)
+{
+    if (TextLength() > 0 && fMarkdownParser) {
+        // find the stretch from offset to affected line
+        int32 startLine = LineAt(offset);
+        int32 startOffset = OffsetAt(startLine);
+
+        int32 endLine = LineAt(offset + length);
+        if (startLine == endLine)
+            endLine++;
+
+        int32 endOffset = OffsetAt(endLine);
+
+        // Ensure proper ordering
+        if (startOffset > endOffset) {
+            std::swap(startOffset, endOffset);
+            std::swap(startLine, endLine);
+        }
+
+        // Re-parse affected region - this does full parse now (safer)
+        MarkupRange(startLine, endLine, startOffset, endOffset);
+    }
 }
 
 void EditorTextView::MessageReceived(BMessage* message)
 {
     switch (message->what) {
+        case 'HLIT':
+        {
+            std::cout << "got highlight message:" << std::endl;
+            message->PrintToStream();
+
+            // Apply highlight from context menu
+            int32 start, end, colorIndex;
+            if (message->FindInt32("start", &start) == B_OK &&
+                message->FindInt32("end", &end) == B_OK &&
+                message->FindInt32("color", &colorIndex) == B_OK) {
+
+                ColorDefs colorDefs;
+                rgb_color* color = colorDefs.GetColor((COLOR_NAME)colorIndex);
+
+                if (color) {
+                    // Light background version of the color (add alpha/blend)
+                    rgb_color bgColor = *color;
+                    bgColor.alpha = 80;  // Semi-transparent
+
+                    Highlight(start, end, color, &bgColor, false, false);
+                }
+            }
+            break;
+        }
+
+        case 'CLRH':
+        {
+            // Clear highlights in range
+            int32 start, end;
+            if (message->FindInt32("start", &start) == B_OK &&
+                message->FindInt32("end", &end) == B_OK) {
+
+                // Remove highlights that overlap this range
+                std::vector<int32> toRemove;
+                for (auto& pair : *fTextHighlights) {
+                    text_highlight* hl = pair.second;
+                    if (hl->startOffset < end && hl->endOffset > start) {
+                        toRemove.push_back(pair.first);
+                    }
+                }
+
+                for (int32 key : toRemove) {
+                    auto it = fTextHighlights->find(key);
+                    if (it != fTextHighlights->end()) {
+                        delete it->second->region;
+                        delete it->second;
+                        fTextHighlights->erase(it);
+                    }
+                }
+
+                Invalidate();
+            }
+            break;
+        }
+
         case B_COPY:
         case B_CUT:
         case B_PASTE:
@@ -221,6 +283,25 @@ void EditorTextView::KeyDown(const char* bytes, int32 numBytes)
 
 void EditorTextView::MouseDown(BPoint where)
 {
+    uint32 buttons = 0;
+    Window()->CurrentMessage()->FindInt32("buttons", (int32*)&buttons);
+
+    // Right-click - show context menu
+    if (buttons & B_SECONDARY_MOUSE_BUTTON) {
+        int32 start, end;
+        GetSelection(&start, &end);
+
+        if (start < end) {
+            // Has selection - show highlight menu
+            BuildContextSelectionMenu();
+        } else {
+            // No selection - show general menu
+            BuildContextMenu();
+        }
+        return;
+    }
+
+    // Normal left-click handling
     BTextView::MouseDown(where);
 
     // Check if clicking on a link
@@ -274,9 +355,9 @@ void EditorTextView::MouseMoved(BPoint where, uint32 code, const BMessage* dragM
         cmark_node* node = fMarkdownParser->GetNodeAtOffset(offset);
 
         if (node && cmark_node_get_type(node) == CMARK_NODE_LINK) {
-            // Change cursor to hand over links
-            SetViewCursor(B_CURSOR_SYSTEM_DEFAULT); // TODO: use hand cursor
+            SetViewCursor(&linkCursor);
         } else {
+            // TODO: handle contextMenuCursor
             SetViewCursor(B_CURSOR_I_BEAM);
         }
     }
@@ -315,54 +396,32 @@ void EditorTextView::MarkupText(const char* text)
     }
 }
 
-void EditorTextView::MarkupRange(const char* text, int32 startLine, int32 endLine)
+void EditorTextView::MarkupRange(int32 startLine, int32 endLine, int32 startOffset, int32 endOffset)
 {
-    if (!text || !fMarkdownParser) return;
+    if (TextLength() == 0 || !fMarkdownParser) return;
 
-    // Calculate byte offsets for the line range
-    int32 startOffset = 0;
-    int32 endOffset = strlen(text);
+    // Get full text (parser needs it for correct offset calculations)
+    const char* fullText = Text();
 
-    int32 currentLine = 1;
-    for (const char* p = text; *p; p++) {
-        if (currentLine == startLine) {
-            startOffset = p - text;
-        }
-        if (currentLine == endLine + 1) {
-            endOffset = p - text;
-            break;
-        }
-        if (*p == '\n') {
-            currentLine++;
-        }
-    }
-
-    // Full parse (fast enough for now, incremental disabled due to user_data issues)
-    if (!fMarkdownParser->Parse(text)) {
-        return;
-    }
-
-    // Only apply style runs that affect the changed line range
-    const std::vector<StyleRun>& runs = fMarkdownParser->GetStyleRuns();
-
-    // First, reset styling in the affected range
-    if (startOffset < endOffset) {
+    // Use incremental parsing
+    if (fMarkdownParser->ParseIncremental(fullText, startLine, endLine)) {
+        // Reset styling in affected range
         SetFontAndColor(startOffset, endOffset, fTextFont, B_FONT_ALL, &textColor);
-    }
 
-    // Then apply markdown styling for runs that intersect the range
-    for (const StyleRun& run : runs) {
-        int32 runEnd = run.offset + run.length;
+        // Apply style runs
+        const std::vector<StyleRun>& runs = fMarkdownParser->GetStyleRuns();
+        for (const StyleRun& run : runs) {
+            int32 runEnd = run.offset + run.length;
 
-        // Only apply runs that overlap with our range
-        if (runEnd > startOffset && run.offset < endOffset) {
-            SetFontAndColor(
-                run.offset,
-                run.offset + run.length,
-                &run.font,
-                B_FONT_ALL,
-                &run.foreground
-            );
+            if (runEnd > startOffset && run.offset < endOffset) {
+                SetFontAndColor(
+                    run.offset,
+                    run.offset + run.length,
+                    &run.font,
+                    B_FONT_ALL,
+                    &run.foreground
+                );
+            }
         }
     }
 }
@@ -496,18 +555,9 @@ void EditorTextView::UpdateStatus()
     // Get line number from parser
     int32 line = fMarkdownParser ? fMarkdownParser->GetLineForOffset(start) : 0;
 
-    // Calculate column: count characters from start of line to cursor
     int32 column = 0;
-    const char* text = Text();
-    if (text) {
-        // Find start of current line
-        int32 lineStart = start;
-        while (lineStart > 0 && text[lineStart - 1] != '\n') {
-            lineStart--;
-        }
-
-        // Column is offset from line start
-        column = start - lineStart;
+    if (TextLength() > 0) {
+        column = start - OffsetAt(CurrentLine());
     }
 
     if (start == end) {
@@ -521,12 +571,64 @@ void EditorTextView::UpdateStatus()
 
 void EditorTextView::BuildContextMenu()
 {
-    // TODO: Implement context menu
+    // TODO: Implement general context menu
 }
 
 void EditorTextView::BuildContextSelectionMenu()
 {
-    // TODO: Implement selection context menu
+    int32 start, end;
+    GetSelection(&start, &end);
+
+    if (start == end) {
+        return; // no selection
+    }
+
+    if (start > end) {
+        std::swap(start, end);
+    }
+
+    BPopUpMenu* menu = new BPopUpMenu("selection_context");
+
+    // Add highlight options with semantic colors
+    BMessage* personMsg = new BMessage('HLIT');
+    personMsg->AddInt32("start", start);
+    personMsg->AddInt32("end", end);
+    personMsg->AddInt32("color", COLOR_MAGENTA);
+    menu->AddItem(new BMenuItem("Highlight as Person", personMsg));
+
+    BMessage* locationMsg = new BMessage('HLIT');
+    locationMsg->AddInt32("start", start);
+    locationMsg->AddInt32("end", end);
+    locationMsg->AddInt32("color", COLOR_PURPLE);
+    menu->AddItem(new BMenuItem("Highlight as Location", locationMsg));
+
+    BMessage* topicMsg = new BMessage('HLIT');
+    topicMsg->AddInt32("start", start);
+    topicMsg->AddInt32("end", end);
+    topicMsg->AddInt32("color", COLOR_GOLD);
+    menu->AddItem(new BMenuItem("Highlight as Topic", topicMsg));
+
+    BMessage* contextMsg = new BMessage('HLIT');
+    contextMsg->AddInt32("start", start);
+    contextMsg->AddInt32("end", end);
+    contextMsg->AddInt32("color", COLOR_CYAN);
+    menu->AddItem(new BMenuItem("Highlight as Context", contextMsg));
+
+    menu->AddSeparatorItem();
+
+    BMessage* clearMsg = new BMessage('CLRH');
+    clearMsg->AddInt32("start", start);
+    clearMsg->AddInt32("end", end);
+    menu->AddItem(new BMenuItem("Clear Highlight", clearMsg));
+
+    menu->SetTargetForItems(this);
+
+    // Show menu at selection
+    BPoint point = PointAt(start);
+    ConvertToScreen(&point);
+
+    menu->SetAsyncAutoDestruct(true);
+    menu->Go(point, true, false, true);
 }
 
 void EditorTextView::RedrawHighlight(text_highlight *highlight)

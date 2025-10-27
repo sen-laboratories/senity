@@ -9,9 +9,18 @@
 
 #define NUM_COLORS 10
 
-enum COLOR_NAME{
-    BLACK = 0,
-    WHITE
+// Semantic color names for highlights
+enum COLOR_NAME {
+    COLOR_BLACK = 0,
+    COLOR_WHITE,
+    COLOR_GOLD,          // For topics/concepts
+    COLOR_ORANGE,        // For actions/events
+    COLOR_RED,           // For important/urgent
+    COLOR_MAGENTA,       // For people/persons
+    COLOR_PURPLE,        // For locations/places
+    COLOR_BLUE,          // For references/links
+    COLOR_CYAN,          // For context/background
+    COLOR_GREEN          // For positive/success
 };
 
 class ColorDefs {
