@@ -16,6 +16,7 @@
 const rgb_color linkColor   = ui_color(B_LINK_TEXT_COLOR);
 const rgb_color codeColor = {80, 80, 80, 255};  // Dark gray
 const rgb_color textColor   = ui_color(B_DOCUMENT_TEXT_COLOR);
+const rgb_color backgroundColor = ui_color(B_DOCUMENT_BACKGROUND_COLOR);
 const rgb_color headerColor = ui_color(B_CONTROL_HIGHLIGHT_COLOR);  // todo: use tinting
 
 class EditorTextView : public BTextView {
@@ -61,6 +62,9 @@ public:
     void            ClearHighlights();
 
 private:
+    void            AdjustHighlightsForInsert(int32, int32);
+    void            AdjustHighlightsForDelete(int32, int32);
+
     void            MarkupText(const char* text);
     void            MarkupRange(const char* text, int32 start, int32 end);
 

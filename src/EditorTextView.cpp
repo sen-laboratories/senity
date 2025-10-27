@@ -15,7 +15,6 @@
 
 #include <cstdio>
 #include <cstring>
-#include <set>
 
 // Structure to store in cmark node's user_data
 struct NodeHighlightData {
@@ -101,69 +100,39 @@ void EditorTextView::Draw(BRect updateRect)
     // Base text drawing
     BTextView::Draw(updateRect);
 
-    if (!fMarkdownParser) return;
+    if (!fTextHighlights || fTextHighlights->empty()) return;
 
-    // Draw highlights stored in cmark nodes
-    int32 startOffset = OffsetAt(updateRect.LeftTop());
-    int32 endOffset = OffsetAt(updateRect.RightBottom());
+    // Draw all highlights
+    for (const auto& pair : *fTextHighlights) {
+        text_highlight* hl = pair.second;
+        if (!hl || !hl->region) continue;
 
-    // Prevent going out of bounds
-    int32 textLen = TextLength();
-    if (endOffset > textLen) endOffset = textLen;
-    if (startOffset < 0) startOffset = 0;
-
-    // Track which nodes we've already drawn to avoid duplicates
-    std::set<cmark_node*> drawnNodes;
-
-    // Walk through visible text and check for highlighted nodes
-    for (int32 offset = startOffset; offset <= endOffset; offset++) {
-        cmark_node* node = fMarkdownParser->GetNodeAtOffset(offset);
-        if (!node) continue;
-
-        // Skip if already drawn
-        if (drawnNodes.find(node) != drawnNodes.end()) {
+        // Check if highlight intersects update rect
+        if (!hl->region->Intersects(updateRect)) {
             continue;
         }
 
-        // Safely get highlight data
-        void* userData = cmark_node_get_user_data(node);
-        if (!userData) continue;
-
-        NodeHighlightData* highlight = static_cast<NodeHighlightData*>(userData);
-
-        // Validate the pointer by checking reasonable values
-        if (!highlight->isHighlighted) {
-            continue;
-        }
-
-        drawnNodes.insert(node);
-
-        // Get the full node range
-        int32 nodeStart = offset;
-        int32 nodeEnd = offset + 20; // Estimate, ideally calculate from node
-
-        if (nodeEnd > textLen) nodeEnd = textLen;
-
-        BPoint startPoint = PointAt(nodeStart);
-        BPoint endPoint = PointAt(nodeEnd);
+        // Recalculate region in case text has reflowed
+        BPoint startPoint = PointAt(hl->startOffset);
+        BPoint endPoint = PointAt(hl->endOffset);
 
         font_height fh;
         GetFontHeight(&fh);
         float height = fh.ascent + fh.descent + fh.leading;
 
         BRect highlightRect(startPoint.x, startPoint.y,
-                          endPoint.x, startPoint.y + height);
+                           endPoint.x, startPoint.y + height);
 
-        if (highlight->isOutline) {
-            SetHighColor(highlight->fgColor);
+        if (hl->outline) {
+            SetHighColor(*hl->fgColor);
             StrokeRect(highlightRect);
         } else {
-            SetHighColor(highlight->bgColor);
+            SetHighColor(*hl->bgColor);
+            SetDrawingMode(B_OP_ALPHA);
+            SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
             FillRect(highlightRect);
+            SetDrawingMode(B_OP_COPY);
         }
-
-        // Skip to end of this node
-        offset = nodeEnd;
     }
 }
 
@@ -215,14 +184,14 @@ void EditorTextView::InsertText(const char* text, int32 length, int32 offset,
 {
     BTextView::InsertText(text, length, offset, runs);
 
-    // Full re-parse immediately
+    // Partial re-parse first to get correct styling
     const char* fullText = Text();
     if (fullText && fMarkdownParser) {
-        // Clear ALL styling first
-        SetFontAndColor(0, TextLength(), fTextFont, B_FONT_ALL, &textColor);
+        int32 startLine = fMarkdownParser->GetLineForOffset(offset);
+        int32 endLine = fMarkdownParser->GetLineForOffset(offset + length);
 
-        // Then re-apply markdown
-        MarkupText(fullText);
+        // Re-parse affected region - this does full parse now (safer)
+        MarkupRange(fullText, startLine, endLine);
     }
 
     UpdateStatus();
@@ -254,7 +223,7 @@ void EditorTextView::MouseDown(BPoint where)
 {
     BTextView::MouseDown(where);
 
-    // Check if clicking on a link or highlighted node
+    // Check if clicking on a link
     int32 offset = OffsetAt(where);
     cmark_node* node = fMarkdownParser->GetNodeAtOffset(offset);
 
@@ -274,17 +243,22 @@ void EditorTextView::MouseDown(BPoint where)
                 return;
             }
         }
+    }
 
-        // Check for highlighted node
-        NodeHighlightData* highlight = (NodeHighlightData*)cmark_node_get_user_data(node);
-        if (highlight && highlight->isHighlighted) {
+    // Check if clicking on a highlight (offset-based, not node-based)
+    for (const auto& pair : *fTextHighlights) {
+        text_highlight* hl = pair.second;
+        if (offset >= hl->startOffset && offset < hl->endOffset) {
             // Handle highlight click
             BMessage highlightMsg('HLIT');
             highlightMsg.AddInt32("offset", offset);
+            highlightMsg.AddInt32("start", hl->startOffset);
+            highlightMsg.AddInt32("end", hl->endOffset);
 
             if (fEditorHandler) {
                 fEditorHandler->MessageReceived(&highlightMsg);
             }
+            return;
         }
     }
 
@@ -345,27 +319,51 @@ void EditorTextView::MarkupRange(const char* text, int32 startLine, int32 endLin
 {
     if (!text || !fMarkdownParser) return;
 
-    // Use incremental parsing
-    if (!fMarkdownParser->ParseIncremental(text, startLine, endLine)) {
-        // Fall back to full parse if incremental fails
-        if (!fMarkdownParser->Parse(text)) {
-            return;
+    // Calculate byte offsets for the line range
+    int32 startOffset = 0;
+    int32 endOffset = strlen(text);
+
+    int32 currentLine = 1;
+    for (const char* p = text; *p; p++) {
+        if (currentLine == startLine) {
+            startOffset = p - text;
+        }
+        if (currentLine == endLine + 1) {
+            endOffset = p - text;
+            break;
+        }
+        if (*p == '\n') {
+            currentLine++;
         }
     }
 
-    // Apply all style runs (incremental parse updates the full run list)
+    // Full parse (fast enough for now, incremental disabled due to user_data issues)
+    if (!fMarkdownParser->Parse(text)) {
+        return;
+    }
+
+    // Only apply style runs that affect the changed line range
     const std::vector<StyleRun>& runs = fMarkdownParser->GetStyleRuns();
 
-    for (const StyleRun& run : runs) {
-        if (run.offset < 0 || run.length <= 0) continue;
+    // First, reset styling in the affected range
+    if (startOffset < endOffset) {
+        SetFontAndColor(startOffset, endOffset, fTextFont, B_FONT_ALL, &textColor);
+    }
 
-        SetFontAndColor(
-            run.offset,
-            run.offset + run.length,
-            &run.font,
-            B_FONT_ALL,
-            &run.foreground
-        );
+    // Then apply markdown styling for runs that intersect the range
+    for (const StyleRun& run : runs) {
+        int32 runEnd = run.offset + run.length;
+
+        // Only apply runs that overlap with our range
+        if (runEnd > startOffset && run.offset < endOffset) {
+            SetFontAndColor(
+                run.offset,
+                run.offset + run.length,
+                &run.font,
+                B_FONT_ALL,
+                &run.foreground
+            );
+        }
     }
 }
 
@@ -386,69 +384,41 @@ void EditorTextView::Highlight(int32 startOffset, int32 endOffset,
 {
     if (!fMarkdownParser) return;
 
-    // Get all nodes in this range
-    for (int32 offset = startOffset; offset < endOffset; offset++) {
-        cmark_node* node = fMarkdownParser->GetNodeAtOffset(offset);
-        if (!node) continue;
+    // Store highlight in our map (offset-based, not node-based)
+    text_highlight* highlight = new text_highlight();
+    highlight->startOffset = startOffset;
+    highlight->endOffset = endOffset;
+    highlight->generated = generated;
+    highlight->outline = outline;
+    highlight->fgColor = fgColor ? fgColor : &textColor;
+    highlight->bgColor = bgColor ? bgColor : &backgroundColor;
+    highlight->region = new BRegion();
 
-        // Check if already has highlight data
-        NodeHighlightData* data = (NodeHighlightData*)cmark_node_get_user_data(node);
-        if (!data) {
-            data = new NodeHighlightData();
-            cmark_node_set_user_data(node, data);
-        }
-
-        // Set highlight properties
-        data->isHighlighted = true;
-        data->fgColor = fgColor ? *fgColor : textColor;
-        data->bgColor = bgColor ? *bgColor : ui_color(B_DOCUMENT_BACKGROUND_COLOR);
-        data->isOutline = outline;
-        data->isGenerated = generated;
-
-        // Skip to next node boundary to avoid setting same node multiple times
-        // (This is a simple optimization)
-    }
-
-    // Invalidate the highlighted region
+    // Calculate region for this highlight
     BPoint startPoint = PointAt(startOffset);
     BPoint endPoint = PointAt(endOffset);
-    BRect invalidRect(startPoint, endPoint);
-    invalidRect.InsetBy(-2, -2);
-    Invalidate(invalidRect);
+
+    font_height fh;
+    GetFontHeight(&fh);
+    float height = fh.ascent + fh.descent + fh.leading;
+
+    // Simple single-line region for now
+    BRect highlightRect(startPoint.x, startPoint.y,
+                       endPoint.x, startPoint.y + height);
+    highlight->region->Include(highlightRect);
+
+    // Store by start offset
+    (*fTextHighlights)[startOffset] = highlight;
+
+    // Invalidate to trigger redraw
+    Invalidate(highlightRect);
 }
 
 void EditorTextView::ClearHighlights()
 {
-    if (!fMarkdownParser) return;
+    if (!fTextHighlights) return;
 
-    // Get document root
-    cmark_node* node = fMarkdownParser->GetNodeAtOffset(0);
-    if (!node) return;
-
-    // Find document root
-    while (cmark_node_parent(node)) {
-        node = cmark_node_parent(node);
-    }
-
-    // Walk tree and free all user_data
-    cmark_iter* iter = cmark_iter_new(node);
-    cmark_event_type ev_type;
-
-    while ((ev_type = cmark_iter_next(iter)) != CMARK_EVENT_DONE) {
-        if (ev_type == CMARK_EVENT_ENTER) {
-            cmark_node* cur = cmark_iter_get_node(iter);
-            NodeHighlightData* data = (NodeHighlightData*)cmark_node_get_user_data(cur);
-
-            if (data) {
-                delete data;
-                cmark_node_set_user_data(cur, nullptr);
-            }
-        }
-    }
-
-    cmark_iter_free(iter);
-
-    // Clear old highlight map (legacy)
+    // Free all highlight data
     for (auto& pair : *fTextHighlights) {
         delete pair.second->region;
         delete pair.second;
@@ -460,10 +430,16 @@ void EditorTextView::ClearHighlights()
 
 BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames)
 {
-    if (!fMarkdownParser) return nullptr;
+    BMessage* msg = new BMessage('NODE');
+
+    if (!fMarkdownParser) {
+        return msg;  // Return empty message, not nullptr
+    }
 
     cmark_node* node = fMarkdownParser->GetNodeAtOffset(offset);
-    if (!node) return nullptr;
+    if (!node) {
+        return msg;  // Return empty message, not nullptr
+    }
 
     // Walk up to find heading
     while (node && cmark_node_get_type(node) != CMARK_NODE_HEADING) {
@@ -471,11 +447,10 @@ BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames)
     }
 
     if (!node || cmark_node_get_type(node) != CMARK_NODE_HEADING) {
-        return nullptr;
+        return msg;  // Return empty message, not nullptr
     }
 
     // Build message for this heading
-    BMessage* msg = new BMessage('NODE');
     msg->AddInt32("level", cmark_node_get_heading_level(node));
     msg->AddInt32("line", cmark_node_get_start_line(node));
     msg->AddInt32("offset", offset);
@@ -500,7 +475,9 @@ BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames)
 
 BMessage* EditorTextView::GetDocumentOutline(bool withNames, bool withDetails)
 {
-    if (!fMarkdownParser) return nullptr;
+    if (!fMarkdownParser) {
+        return new BMessage();  // Return empty message, not nullptr
+    }
 
     const BMessage& outline = fMarkdownParser->GetOutline();
 
@@ -557,4 +534,67 @@ void EditorTextView::RedrawHighlight(text_highlight *highlight)
     if (!highlight || !highlight->region) return;
 
     Invalidate(highlight->region->Frame());
+}
+
+void EditorTextView::AdjustHighlightsForInsert(int32 offset, int32 length)
+{
+    if (!fTextHighlights || fTextHighlights->empty()) return;
+
+    // Shift all highlights after the insert point
+    std::map<int32, text_highlight*> adjusted;
+
+    for (auto& pair : *fTextHighlights) {
+        text_highlight* hl = pair.second;
+
+        if (hl->startOffset >= offset) {
+            // Highlight is entirely after insert - shift it
+            hl->startOffset += length;
+            hl->endOffset += length;
+        } else if (hl->endOffset > offset) {
+            // Highlight spans the insert point - extend it
+            hl->endOffset += length;
+        }
+
+        // Re-insert with new start offset as key
+        adjusted[hl->startOffset] = hl;
+    }
+
+    *fTextHighlights = adjusted;
+}
+
+void EditorTextView::AdjustHighlightsForDelete(int32 start, int32 finish)
+{
+    if (!fTextHighlights || fTextHighlights->empty()) return;
+
+    int32 length = finish - start;
+    std::map<int32, text_highlight*> adjusted;
+
+    for (auto& pair : *fTextHighlights) {
+        text_highlight* hl = pair.second;
+
+        if (hl->endOffset <= start) {
+            // Highlight is entirely before delete - keep as is
+            adjusted[hl->startOffset] = hl;
+        } else if (hl->startOffset >= finish) {
+            // Highlight is entirely after delete - shift it back
+            hl->startOffset -= length;
+            hl->endOffset -= length;
+            adjusted[hl->startOffset] = hl;
+        } else if (hl->startOffset >= start && hl->endOffset <= finish) {
+            // Highlight is entirely within deleted range - remove it
+            delete hl->region;
+            delete hl;
+        } else {
+            // Highlight partially overlaps - adjust boundaries
+            if (hl->startOffset < start) {
+                hl->endOffset = start;  // Trim end
+            } else {
+                hl->startOffset = start;  // Trim start
+            }
+            hl->endOffset -= length;
+            adjusted[hl->startOffset] = hl;
+        }
+    }
+
+    *fTextHighlights = adjusted;
 }
