@@ -70,9 +70,6 @@ private:
     void            AdjustHighlightsForDelete(int32, int32);
 
     void            MarkupText(const char* text);
-    void            MarkupRange(int32 startLine,   int32 endLine,
-                                int32 startOffset, int32 endOffset);
-    void            CalculateAndMarkupRange(int32 offset, int32 length);
 
     BMessage*       GetOutlineAt(int32 offset, bool withNames = false);
     BMessage*       GetDocumentOutline(bool withNames = false, bool withDetails = false);

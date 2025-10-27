@@ -99,12 +99,13 @@ EditorTextView::~EditorTextView()
 
 void EditorTextView::Draw(BRect updateRect)
 {
-    // Base text drawing
     BTextView::Draw(updateRect);
 
-    if (!fTextHighlights || fTextHighlights->empty()) return;
+    if (!fTextHighlights || fTextHighlights->empty()) {
+        return;
+    }
 
-    // Draw all highlights
+    // redraw any highlights in sight
     for (const auto& pair : *fTextHighlights) {
         text_highlight* hl = pair.second;
         if (!hl || !hl->region) continue;
@@ -126,9 +127,11 @@ void EditorTextView::Draw(BRect updateRect)
                            endPoint.x, startPoint.y + height);
 
         if (hl->outline) {
+            std::cout << "redraw outline" << std::endl;
             SetHighColor(*hl->fgColor);
             StrokeRect(highlightRect);
         } else {
+            std::cout << "redraw highlight" << std::endl;
             SetHighColor(*hl->bgColor);
             SetDrawingMode(B_OP_ALPHA);
             SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
@@ -167,7 +170,10 @@ void EditorTextView::SetText(const char* text, const text_run_array* runs)
 void EditorTextView::DeleteText(int32 start, int32 finish)
 {
     BTextView::DeleteText(start, finish);
-    CalculateAndMarkupRange(start, finish - start);
+
+    if (fMarkdownParser) {
+        MarkupText(Text());
+    }
 
     UpdateStatus();
 }
@@ -175,33 +181,12 @@ void EditorTextView::DeleteText(int32 start, int32 finish)
 void EditorTextView::InsertText(const char* text, int32 length, int32 offset, const text_run_array* runs)
 {
     BTextView::InsertText(text, length, offset, runs);
-    CalculateAndMarkupRange(offset, length);
+
+    if (fMarkdownParser) {
+        MarkupText(Text());
+    }
 
     UpdateStatus();
-}
-
-void EditorTextView::CalculateAndMarkupRange(int32 offset, int32 length)
-{
-    if (TextLength() > 0 && fMarkdownParser) {
-        // find the stretch from offset to affected line
-        int32 startLine = LineAt(offset);
-        int32 startOffset = OffsetAt(startLine);
-
-        int32 endLine = LineAt(offset + length);
-        if (startLine == endLine)
-            endLine++;
-
-        int32 endOffset = OffsetAt(endLine);
-
-        // Ensure proper ordering
-        if (startOffset > endOffset) {
-            std::swap(startOffset, endOffset);
-            std::swap(startLine, endLine);
-        }
-
-        // Re-parse affected region - this does full parse now (safer)
-        MarkupRange(startLine, endLine, startOffset, endOffset);
-    }
 }
 
 void EditorTextView::MessageReceived(BMessage* message)
@@ -393,36 +378,6 @@ void EditorTextView::MarkupText(const char* text)
         BMessage outlineMsg('OUTL');
         outlineMsg.AddMessage("outline", &outline);
         BMessenger(fEditorHandler).SendMessage(&outlineMsg);
-    }
-}
-
-void EditorTextView::MarkupRange(int32 startLine, int32 endLine, int32 startOffset, int32 endOffset)
-{
-    if (TextLength() == 0 || !fMarkdownParser) return;
-
-    // Get full text (parser needs it for correct offset calculations)
-    const char* fullText = Text();
-
-    // Use incremental parsing
-    if (fMarkdownParser->ParseIncremental(fullText, startLine, endLine)) {
-        // Reset styling in affected range
-        SetFontAndColor(startOffset, endOffset, fTextFont, B_FONT_ALL, &textColor);
-
-        // Apply style runs
-        const std::vector<StyleRun>& runs = fMarkdownParser->GetStyleRuns();
-        for (const StyleRun& run : runs) {
-            int32 runEnd = run.offset + run.length;
-
-            if (runEnd > startOffset && run.offset < endOffset) {
-                SetFontAndColor(
-                    run.offset,
-                    run.offset + run.length,
-                    &run.font,
-                    B_FONT_ALL,
-                    &run.foreground
-                );
-            }
-        }
     }
 }
 
