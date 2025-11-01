@@ -18,7 +18,6 @@
 #include <cstdio>
 #include <cstring>
 
-// Structure to store in cmark node's user_data
 struct NodeHighlightData {
     bool isHighlighted;
     rgb_color fgColor;
@@ -291,13 +290,20 @@ void EditorTextView::MouseDown(BPoint where)
 
     // Check if clicking on a link
     int32 offset = OffsetAt(where);
-    cmark_node* node = fMarkdownParser->GetNodeAtOffset(offset);
+    TSNode node = fMarkdownParser->GetNodeAtOffset(offset);
 
-    if (node) {
+    if (!ts_node_is_null(node)) {
         // Check for link
-        if (cmark_node_get_type(node) == CMARK_NODE_LINK) {
-            const char* url = cmark_node_get_url(node);
-            if (url) {
+        const char* nodeType = ts_node_type(node);
+        if (strcmp(nodeType, "inline_link") == 0 || strcmp(nodeType, "shortcut_link") == 0) {
+            // Get URL from link_destination child
+            TSNode destNode = ts_node_child_by_field_name(node, "link_destination", 16);
+            if (!ts_node_is_null(destNode)) {
+                uint32_t start = ts_node_start_byte(destNode);
+                uint32_t end = ts_node_end_byte(destNode);
+                const char* source = Text();
+                BString url(source + start, end - start);
+
                 // Handle link click - send message to editor handler
                 BMessage linkMsg('LINK');
                 linkMsg.AddString("url", url);
@@ -337,12 +343,17 @@ void EditorTextView::MouseMoved(BPoint where, uint32 code, const BMessage* dragM
 
     if (code == B_INSIDE_VIEW) {
         int32 offset = OffsetAt(where);
-        cmark_node* node = fMarkdownParser->GetNodeAtOffset(offset);
+        TSNode node = fMarkdownParser->GetNodeAtOffset(offset);
 
-        if (node && cmark_node_get_type(node) == CMARK_NODE_LINK) {
-            SetViewCursor(&linkCursor);
+        if (!ts_node_is_null(node)) {
+            const char* nodeType = ts_node_type(node);
+            if (strcmp(nodeType, "inline_link") == 0 || strcmp(nodeType, "shortcut_link") == 0) {
+                SetViewCursor(&linkCursor);
+            } else {
+                // TODO: handle contextMenuCursor
+                SetViewCursor(B_CURSOR_I_BEAM);
+            }
         } else {
-            // TODO: handle contextMenuCursor
             SetViewCursor(B_CURSOR_I_BEAM);
         }
     }
@@ -373,11 +384,9 @@ void EditorTextView::MarkupText(const char* text)
     }
 
     // Notify editor handler about outline update
-    const BMessage& outline = fMarkdownParser->GetOutline();
+    BMessage* outline = fMarkdownParser->GetOutline();
     if (fEditorHandler) {
-        BMessage outlineMsg('OUTL');
-        outlineMsg.AddMessage("outline", &outline);
-        BMessenger(fEditorHandler).SendMessage(&outlineMsg);
+        BMessenger(fEditorHandler).SendMessage(outline);
     }
 }
 
@@ -444,44 +453,63 @@ void EditorTextView::ClearHighlights()
 
 BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames)
 {
-    BMessage* msg = new BMessage('NODE');
+    BMessage* msg = new BMessage('OUTL');
 
     if (!fMarkdownParser) {
         return msg;  // Return empty message, not nullptr
     }
 
-    cmark_node* node = fMarkdownParser->GetNodeAtOffset(offset);
-    if (!node) {
+    TSNode node = fMarkdownParser->GetNodeAtOffset(offset);
+    if (ts_node_is_null(node)) {
         return msg;  // Return empty message, not nullptr
     }
 
-    // Walk up to find heading
-    while (node && cmark_node_get_type(node) != CMARK_NODE_HEADING) {
-        node = cmark_node_parent(node);
+    // Check if this is a heading node
+    const char* nodeType = ts_node_type(node);
+    if (strcmp(nodeType, "atx_heading") != 0) {
+        // Not a heading, return empty
+        return msg;
     }
 
-    if (!node || cmark_node_get_type(node) != CMARK_NODE_HEADING) {
-        return msg;  // Return empty message, not nullptr
+    // Get heading level
+    int level = 1;
+    uint32_t childCount = ts_node_child_count(node);
+    for (uint32_t i = 0; i < childCount; i++) {
+        TSNode child = ts_node_child(node, i);
+        const char* childType = ts_node_type(child);
+
+        if (strncmp(childType, "atx_h", 5) == 0 && childType[5] >= '1' && childType[5] <= '6') {
+            level = childType[5] - '0';
+            break;
+        }
     }
 
-    // Build message for this heading
-    msg->AddInt32("level", cmark_node_get_heading_level(node));
-    msg->AddInt32("line", cmark_node_get_start_line(node));
+    // Get line number
+    int32 line = fMarkdownParser->GetLineForOffset(offset);
+
+    // Build message
+    msg->AddInt32("level", level);
+    msg->AddInt32("line", line);
     msg->AddInt32("offset", offset);
 
-    // Extract heading text
-    BString headingText;
-    cmark_node* child = cmark_node_first_child(node);
-    while (child) {
-        if (cmark_node_get_type(child) == CMARK_NODE_TEXT) {
-            const char* text = cmark_node_get_literal(child);
-            if (text) headingText << text;
+    // Extract heading text if requested
+    if (withNames) {
+        BString headingText;
+        for (uint32_t i = 0; i < childCount; i++) {
+            TSNode child = ts_node_child(node, i);
+            if (strcmp(ts_node_type(child), "heading_content") == 0) {
+                uint32_t start = ts_node_start_byte(child);
+                uint32_t end = ts_node_end_byte(child);
+                const char* source = Text();
+                headingText.SetTo(source + start, end - start);
+                headingText.Trim();
+                break;
+            }
         }
-        child = cmark_node_next(child);
-    }
 
-    if (withNames && headingText.Length() > 0) {
-        msg->AddString("text", headingText);
+        if (headingText.Length() > 0) {
+            msg->AddString("text", headingText);
+        }
     }
 
     return msg;
@@ -493,11 +521,7 @@ BMessage* EditorTextView::GetDocumentOutline(bool withNames, bool withDetails)
         return new BMessage();  // Return empty message, not nullptr
     }
 
-    const BMessage& outline = fMarkdownParser->GetOutline();
-
-    // Return a copy
-    BMessage* copy = new BMessage(outline);
-    return copy;
+    return fMarkdownParser->GetOutline();
 }
 
 void EditorTextView::UpdateStatus()
@@ -591,67 +615,4 @@ void EditorTextView::RedrawHighlight(text_highlight *highlight)
     if (!highlight || !highlight->region) return;
 
     Invalidate(highlight->region->Frame());
-}
-
-void EditorTextView::AdjustHighlightsForInsert(int32 offset, int32 length)
-{
-    if (!fTextHighlights || fTextHighlights->empty()) return;
-
-    // Shift all highlights after the insert point
-    std::map<int32, text_highlight*> adjusted;
-
-    for (auto& pair : *fTextHighlights) {
-        text_highlight* hl = pair.second;
-
-        if (hl->startOffset >= offset) {
-            // Highlight is entirely after insert - shift it
-            hl->startOffset += length;
-            hl->endOffset += length;
-        } else if (hl->endOffset > offset) {
-            // Highlight spans the insert point - extend it
-            hl->endOffset += length;
-        }
-
-        // Re-insert with new start offset as key
-        adjusted[hl->startOffset] = hl;
-    }
-
-    *fTextHighlights = adjusted;
-}
-
-void EditorTextView::AdjustHighlightsForDelete(int32 start, int32 finish)
-{
-    if (!fTextHighlights || fTextHighlights->empty()) return;
-
-    int32 length = finish - start;
-    std::map<int32, text_highlight*> adjusted;
-
-    for (auto& pair : *fTextHighlights) {
-        text_highlight* hl = pair.second;
-
-        if (hl->endOffset <= start) {
-            // Highlight is entirely before delete - keep as is
-            adjusted[hl->startOffset] = hl;
-        } else if (hl->startOffset >= finish) {
-            // Highlight is entirely after delete - shift it back
-            hl->startOffset -= length;
-            hl->endOffset -= length;
-            adjusted[hl->startOffset] = hl;
-        } else if (hl->startOffset >= start && hl->endOffset <= finish) {
-            // Highlight is entirely within deleted range - remove it
-            delete hl->region;
-            delete hl;
-        } else {
-            // Highlight partially overlaps - adjust boundaries
-            if (hl->startOffset < start) {
-                hl->endOffset = start;  // Trim end
-            } else {
-                hl->startOffset = start;  // Trim start
-            }
-            hl->endOffset -= length;
-            adjusted[hl->startOffset] = hl;
-        }
-    }
-
-    *fTextHighlights = adjusted;
 }

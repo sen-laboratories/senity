@@ -3,9 +3,9 @@
  * All rights reserved. Distributed under the terms of the MIT license.
  */
 
-#include <AboutWindow.h>
 #include <Catalog.h>
 
+#include "AboutWindow.h"
 #include "App.h"
 #include "MainWindow.h"
 
@@ -55,7 +55,7 @@ void App::ArgvReceived(int32 argc, char ** argv) {
     }
 }
 
-int main(int32 argc, char ** argv)
+int main(int32 argc, char **argv)
 {
 	App* app = new App();
 	app->Run();

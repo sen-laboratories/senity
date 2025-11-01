@@ -153,68 +153,68 @@ SyntaxToken::Type SyntaxHighlighter::ClassifyNode(TSNode node, const char* sourc
 {
     const char* nodeType = ts_node_type(node);
 
-    // Tree-sitter grammars already provide semantic node types
-    // We just need to recognize the common patterns
-
-    // Comments - very common pattern across all grammars
+    // Tree-sitter already gives us semantic node types - just map them directly
+    
+    // Comments
     if (strstr(nodeType, "comment")) {
         return SyntaxToken::COMMENT;
     }
 
-    // Strings - common patterns
-    if (strstr(nodeType, "string") || strstr(nodeType, "char")) {
+    // Strings
+    if (strstr(nodeType, "string") || strstr(nodeType, "char_literal") ||
+        strcmp(nodeType, "string_literal") == 0 || strcmp(nodeType, "raw_string_literal") == 0) {
         return SyntaxToken::STRING;
     }
 
-    // Numbers - common patterns
+    // Numbers
     if (strstr(nodeType, "number") || strstr(nodeType, "integer") ||
-        strstr(nodeType, "float") || strstr(nodeType, "decimal")) {
+        strstr(nodeType, "float") || strstr(nodeType, "decimal") ||
+        strcmp(nodeType, "number_literal") == 0) {
         return SyntaxToken::NUMBER;
     }
 
-    // Types - grammar provides these
-    if (strstr(nodeType, "type")) {
+    // Types - tree-sitter marks these semantically
+    if (strstr(nodeType, "type") || strcmp(nodeType, "type_identifier") == 0 ||
+        strcmp(nodeType, "primitive_type") == 0) {
         return SyntaxToken::TYPE;
     }
 
-    // Functions - grammar provides these
-    if (strstr(nodeType, "function") || strstr(nodeType, "method")) {
+    // Functions
+    if (strstr(nodeType, "function") || strstr(nodeType, "method") ||
+        strcmp(nodeType, "function_declarator") == 0 || strcmp(nodeType, "call_expression") == 0) {
         return SyntaxToken::FUNCTION;
     }
 
-    // Operators - grammar provides these
-    if (strstr(nodeType, "operator")) {
+    // Operators
+    if (strstr(nodeType, "operator") || strcmp(nodeType, "binary_expression") == 0 ||
+        strcmp(nodeType, "unary_expression") == 0) {
         return SyntaxToken::OPERATOR;
     }
 
-    // Keywords - Tree-sitter marks these specifically
-    // Each grammar defines its own keywords as node types
-    // For example: "if", "for", "while", "return", "class", "def", etc.
-    // We detect them by checking if it's a short, known keyword-like node
-    TSSymbol symbol = ts_node_symbol(node);
-    if (ts_language_symbol_type(ts_node_language(node), symbol) == TSSymbolTypeAnonymous) {
-        // Anonymous nodes are usually keywords, operators, punctuation
-        // The grammar author marks language keywords as anonymous nodes
-        const char* text = ts_node_type(node);
+    // Keywords - tree-sitter marks language keywords with their actual keyword as the type
+    // Examples: "if", "for", "while", "return", "class", "def", "fn", "let", "const", etc.
+    // These are anonymous nodes (not "named" semantic constructs)
+    if (!ts_node_is_named(node)) {
+        const char* text = nodeType;
         size_t len = strlen(text);
-
-        // Keywords are typically short (2-15 chars) and alphabetic
+        
+        // Keywords are typically short and alphabetic
         if (len >= 2 && len <= 15) {
-            bool allAlpha = true;
+            bool isKeyword = true;
             for (size_t i = 0; i < len; i++) {
                 if (!std::isalpha(text[i]) && text[i] != '_') {
-                    allAlpha = false;
+                    isKeyword = false;
                     break;
                 }
             }
-            if (allAlpha) {
+            if (isKeyword) {
                 return SyntaxToken::KEYWORD;
             }
         }
     }
 
     // Identifiers
-    if (strcmp(nodeType, "identifier") == 0) {
+    if (strcmp(nodeType, "identifier") == 0 || strcmp(nodeType, "field_identifier") == 0) {
         return SyntaxToken::VARIABLE;
     }
 

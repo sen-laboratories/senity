@@ -46,14 +46,14 @@ public:
     virtual void    SetText(BFile *file, int32 offset, size_t size);
     virtual void    SetText(const char* text, const text_run_array* runs = NULL);
 
-	virtual	void    DeleteText(int32 start, int32 finish);
-	virtual	void    InsertText(const char* text, int32 length, int32 offset,
+    virtual	void    DeleteText(int32 start, int32 finish);
+    virtual	void    InsertText(const char* text, int32 length, int32 offset,
                                const text_run_array* runs = NULL);
 
     virtual	void    MessageReceived(BMessage* message);
 
     virtual void    KeyDown(const char* bytes, int32 numBytes);
-    virtual	void	MouseDown(BPoint where);
+    virtual	void    MouseDown(BPoint where);
     virtual	void    MouseMoved(BPoint where, uint32 code,
                                const BMessage* dragMessage);
 
@@ -66,9 +66,6 @@ public:
     void            ClearHighlights();
 
 private:
-    void            AdjustHighlightsForInsert(int32, int32);
-    void            AdjustHighlightsForDelete(int32, int32);
-
     void            MarkupText(const char* text);
 
     BMessage*       GetOutlineAt(int32 offset, bool withNames = false);

@@ -11,17 +11,20 @@
 #include <map>
 
 extern "C" {
-#include <cmark/cmark-gfm.h>
-#include <cmark/cmark-gfm-core-extensions.h>
+#include <tree_sitter/api.h>
 }
+
+// Forward declare tree-sitter language
+extern "C" const TSLanguage *tree_sitter_markdown();
+
+inline TSNode ts_null_node = {0}; // This is a valid null node.
 
 class SyntaxHighlighter;
 
 // Represents a styled region of text
-// NOTE: We keep the markdown syntax IN the text, we only add styling
 struct StyleRun {
-    int32 offset;      // Character offset in original text
-    int32 length;      // Length of this styled region
+    int32 offset;
+    int32 length;
 
     enum Type {
         NORMAL,
@@ -40,6 +43,8 @@ struct StyleRun {
         LIST_BULLET,
         LIST_NUMBER,
         BLOCKQUOTE,
+        TASK_MARKER_UNCHECKED,
+        TASK_MARKER_CHECKED,
         // Syntax highlighting types
         SYNTAX_KEYWORD,
         SYNTAX_TYPE,
@@ -50,17 +55,13 @@ struct StyleRun {
         SYNTAX_OPERATOR
     } type;
 
-    // Colors for rendering (BFont doesn't hold colors)
     rgb_color foreground;
     rgb_color background;
-
-    // Font information
     BFont font;
 
-    // Metadata
     BString language;  // For code blocks
-    int32 listLevel;   // For nested lists
     BString url;       // For links
+    BString text;      // For replacements (Unicode symbols)
 };
 
 class MarkdownParser {
@@ -68,23 +69,22 @@ public:
     MarkdownParser();
     ~MarkdownParser();
 
-    // Main parsing - scans markdown and creates style runs
-    // The original text is NOT modified
+    // Main parsing - creates AST with tree-sitter
     bool Parse(const char* markdownText);
 
-    // Incremental update - only re-parse changed lines
-    bool ParseIncremental(const char* markdownText, int32 startLine, int32 endLine);
+    // TRUE incremental parsing - tell tree-sitter what changed
+    bool ParseIncremental(const char* markdownText,
+                         int32 editOffset, int32 oldLength, int32 newLength);
 
     // Get style runs for rendering
     const std::vector<StyleRun>& GetStyleRuns() const { return fStyleRuns; }
 
-    // Get hierarchical outline as BMessage
-    const BMessage& GetOutline() const { return fOutline; }
+    // Get hierarchical outline
+    BMessage* GetOutline() { return &fOutline; }
 
-    // Position mapping
-    cmark_node* GetNodeAtLine(int line) const;
-    cmark_node* GetNodeAtOffset(int32 textOffset) const;
-    int32 GetLineForOffset(int32 textOffset) const;
+    // Position queries
+    TSNode GetNodeAtOffset(int32 offset) const;
+    int32 GetLineForOffset(int32 offset) const;
 
     // Style configuration
     void SetFont(StyleRun::Type type, const BFont& font);
@@ -92,21 +92,31 @@ public:
 
     // Syntax highlighting
     void SetSyntaxHighlighter(SyntaxHighlighter* highlighter);
-    bool IsSyntaxHighlightingEnabled() const { return fSyntaxHighlighter != nullptr; }
 
-    // Clear all state
+    // Debug output
+    void SetDebugEnabled(bool enabled) { fDebugEnabled = enabled; }
+    bool IsDebugEnabled() const { return fDebugEnabled; }
+    void DumpTree() const;
+    void DumpStyleRuns() const;
+    void DumpOutline() const;
+
+    // Unicode symbol replacement
+    void SetUseUnicodeSymbols(bool use) { fUseUnicodeSymbols = use; }
+    bool GetUseUnicodeSymbols() const { return fUseUnicodeSymbols; }
+
+    // Clear all
     void Clear();
 
 private:
-    // AST and indices
-    cmark_node* fDocument;
-    std::map<int, cmark_node*> fLineToNode;
-    std::map<int32, cmark_node*> fOffsetToNode;
-    std::map<cmark_node*, int32> fNodeToOffset;
+    // Tree-sitter state
+    TSParser* fParser;
+    TSTree* fTree;
+    const char* fSourceText;  // We need to keep a copy for tree-sitter
+    char* fSourceCopy;
 
     // Output
     std::vector<StyleRun> fStyleRuns;
-    BMessage fOutline;
+    BMessage              fOutline;
 
     // Style configuration
     std::map<StyleRun::Type, BFont> fFonts;
@@ -116,20 +126,31 @@ private:
     // Syntax highlighter (not owned)
     SyntaxHighlighter* fSyntaxHighlighter;
 
-    // Processing methods
-    void ProcessNode(cmark_node* node, const char* sourceText);
+    // Options
+    bool fDebugEnabled;
+    bool fUseUnicodeSymbols;
+
+    // Processing
+    void ProcessNode(TSNode node, int depth = 0);
     void CreateStyleRun(int32 offset, int32 length, StyleRun::Type type,
-                       const BString& language = "", const BString& url = "");
+                       const BString& language = "", const BString& url = "",
+                       const BString& text = "");
     void ApplySyntaxHighlighting(int32 codeOffset, int32 codeLength,
                                  const char* code, const char* language);
 
-    // Indexing
-    void BuildLineIndex();
+    // Outline building
     void BuildOutline();
-    void BuildOutlineRecursive(cmark_node* startNode, BMessage& parent, int minLevel);
+    void AddHeadingToOutline(TSNode node, int level);
 
     // Utilities
     void InitializeDefaultStyles();
-    int32 GetNodeStartOffset(cmark_node* node, const char* sourceText) const;
-    int32 GetNodeEndOffset(cmark_node* node, const char* sourceText) const;
+    StyleRun::Type GetStyleTypeForNode(TSNode node) const;
+    int GetHeadingLevel(TSNode node) const;
+    BString GetNodeText(TSNode node) const;
+    void DebugPrintNode(TSNode node, int depth) const;
+
+    // Unicode replacements
+    const char* GetListBulletSymbol() const;
+    const char* GetTaskCheckedSymbol() const;
+    const char* GetTaskUncheckedSymbol() const;
 };
