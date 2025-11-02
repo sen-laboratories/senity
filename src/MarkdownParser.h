@@ -14,8 +14,9 @@ extern "C" {
 #include <tree_sitter/api.h>
 }
 
-// Forward declare tree-sitter language
+// Forward declare tree-sitter languages
 extern "C" const TSLanguage *tree_sitter_markdown();
+extern "C" const TSLanguage *tree_sitter_markdown_inline();
 
 inline TSNode ts_null_node = {0}; // This is a valid null node.
 
@@ -74,10 +75,16 @@ public:
 
     // TRUE incremental parsing - tell tree-sitter what changed
     bool ParseIncremental(const char* markdownText,
-                         int32 editOffset, int32 oldLength, int32 newLength);
+                         int32 editOffset, int32 oldLength, int32 newLength,
+                         int32 startLine, int32 startColumn,
+                         int32 oldEndLine, int32 oldEndColumn,
+                         int32 newEndLine, int32 newEndColumn);
 
     // Get style runs for rendering
     const std::vector<StyleRun>& GetStyleRuns() const { return fStyleRuns; }
+    
+    // Get style runs for a specific range (more efficient for partial updates)
+    std::vector<StyleRun> GetStyleRunsInRange(int32 startOffset, int32 endOffset) const;
 
     // Get hierarchical outline
     BMessage* GetOutline() { return &fOutline; }
@@ -110,6 +117,7 @@ public:
 private:
     // Tree-sitter state
     TSParser* fParser;
+    TSParser* fInlineParser;  // For inline markdown (emphasis, strong, links, etc.)
     TSTree* fTree;
     const char* fSourceText;  // We need to keep a copy for tree-sitter
     char* fSourceCopy;
@@ -132,6 +140,8 @@ private:
 
     // Processing
     void ProcessNode(TSNode node, int depth = 0);
+    void ProcessInlineContent(TSNode node);
+    void ProcessInlineNode(TSNode node, int32 baseOffset);
     void CreateStyleRun(int32 offset, int32 length, StyleRun::Type type,
                        const BString& language = "", const BString& url = "",
                        const BString& text = "");

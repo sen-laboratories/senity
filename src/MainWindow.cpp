@@ -123,6 +123,8 @@ void MainWindow::MessageReceived(BMessage* message)
 
 This is a **bold** statement with some `inline code`.
 
+Link to [se docs](http://sen.docs.org).
+
 ## Code Example
 
 Here's some C++ code:

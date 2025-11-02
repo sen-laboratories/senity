@@ -7,10 +7,11 @@
 // Unicode symbols for better visual presentation
 static const char* UNICODE_BULLET = "•";           // U+2022 BULLET
 static const char* UNICODE_CHECKBOX_UNCHECKED = "☐"; // U+2610 BALLOT BOX
-static const char* UNICODE_CHECKBOX_CHECKED = "☑";   // U+2611 BALLOT BOX WITH CHECK
+static const char* UNICODE_CHECKBOX_CHECKED = "✅";   // U+2611 BALLOT BOX WITH CHECK
 
 MarkdownParser::MarkdownParser()
     : fParser(nullptr)
+    , fInlineParser(nullptr)
     , fTree(nullptr)
     , fSourceText(nullptr)
     , fSourceCopy(nullptr)
@@ -18,9 +19,13 @@ MarkdownParser::MarkdownParser()
     , fDebugEnabled(false)
     , fUseUnicodeSymbols(true)
 {
-    // Create tree-sitter parser
+    // Create tree-sitter parser for block-level markdown
     fParser = ts_parser_new();
     ts_parser_set_language(fParser, tree_sitter_markdown());
+
+    // Create parser for inline markdown (emphasis, strong, links, etc.)
+    fInlineParser = ts_parser_new();
+    ts_parser_set_language(fInlineParser, tree_sitter_markdown_inline());
 
     InitializeDefaultStyles();
 }
@@ -31,6 +36,9 @@ MarkdownParser::~MarkdownParser()
 
     if (fParser) {
         ts_parser_delete(fParser);
+    }
+    if (fInlineParser) {
+        ts_parser_delete(fInlineParser);
     }
 }
 
@@ -157,7 +165,10 @@ bool MarkdownParser::Parse(const char* markdownText)
 }
 
 bool MarkdownParser::ParseIncremental(const char* markdownText,
-                                      int32 editOffset, int32 oldLength, int32 newLength)
+                                      int32 editOffset, int32 oldLength, int32 newLength,
+                                      int32 startLine, int32 startColumn,
+                                      int32 oldEndLine, int32 oldEndColumn,
+                                      int32 newEndLine, int32 newEndColumn)
 {
     if (!markdownText || !fParser || !fTree) {
         // No previous tree, do full parse
@@ -170,6 +181,9 @@ bool MarkdownParser::ParseIncremental(const char* markdownText,
     if (fDebugEnabled) {
         printf("\n=== Incremental Parse ===\n");
         printf("Edit: offset=%d, oldLen=%d, newLen=%d\n", editOffset, oldLength, newLength);
+        printf("Start: line=%d, col=%d\n", startLine, startColumn);
+        printf("OldEnd: line=%d, col=%d\n", oldEndLine, oldEndColumn);
+        printf("NewEnd: line=%d, col=%d\n", newEndLine, newEndColumn);
     }
 
     // Create edit descriptor for tree-sitter
@@ -178,31 +192,10 @@ bool MarkdownParser::ParseIncremental(const char* markdownText,
     edit.old_end_byte = editOffset + oldLength;
     edit.new_end_byte = editOffset + newLength;
 
-    // Calculate line/column - use memchr for fast newline counting
-    auto countLines = [](const char* text, int32 offset) -> TSPoint {
-        uint32_t line = 0;
-        uint32_t column = 0;
-        const char* p = text;
-        const char* end = text + offset;
-
-        while (p < end) {
-            const char* newline = (const char*)memchr(p, '\n', end - p);
-            if (newline) {
-                line++;
-                p = newline + 1;
-                column = 0;
-            } else {
-                column = end - p;
-                break;
-            }
-        }
-
-        return {line, column};
-    };
-
-    edit.start_point = countLines(fSourceText, editOffset);
-    edit.old_end_point = countLines(fSourceText, editOffset + oldLength);
-    edit.new_end_point = countLines(markdownText, editOffset + newLength);
+    // Use provided line and column counts directly
+    edit.start_point = {(uint32_t)startLine, (uint32_t)startColumn};
+    edit.old_end_point = {(uint32_t)oldEndLine, (uint32_t)oldEndColumn};
+    edit.new_end_point = {(uint32_t)newEndLine, (uint32_t)newEndColumn};
 
     // Tell tree-sitter about the edit
     ts_tree_edit(fTree, &edit);
@@ -347,11 +340,76 @@ void MarkdownParser::ProcessNode(TSNode node, int depth)
         }
     }
 
+    // Special handling for inline content (paragraph, heading_content, etc.)
+    if (strcmp(nodeType, "inline") == 0 || strcmp(nodeType, "paragraph") == 0) {
+        // Parse inline markdown within this node
+        ProcessInlineContent(node);
+    }
+
     // Recursively process children
     uint32_t childCount = ts_node_child_count(node);
     for (uint32_t i = 0; i < childCount; i++) {
         TSNode child = ts_node_child(node, i);
         ProcessNode(child, depth + 1);
+    }
+}
+
+void MarkdownParser::ProcessInlineContent(TSNode node)
+{
+    uint32_t startByte = ts_node_start_byte(node);
+    uint32_t endByte = ts_node_end_byte(node);
+    int32 length = endByte - startByte;
+
+    if (length <= 0 || !fSourceText || !fInlineParser) return;
+
+    // Parse inline content with inline parser
+    const char* inlineText = fSourceText + startByte;
+    TSTree* inlineTree = ts_parser_parse_string(fInlineParser, nullptr, inlineText, length);
+
+    if (!inlineTree) return;
+
+    // Process inline tree to find emphasis, strong, links, etc.
+    TSNode inlineRoot = ts_tree_root_node(inlineTree);
+    ProcessInlineNode(inlineRoot, startByte);
+
+    ts_tree_delete(inlineTree);
+}
+
+void MarkdownParser::ProcessInlineNode(TSNode node, int32 baseOffset)
+{
+    const char* nodeType = ts_node_type(node);
+
+    if (!ts_node_is_named(node)) {
+        return;
+    }
+
+    uint32_t startByte = ts_node_start_byte(node);
+    uint32_t endByte = ts_node_end_byte(node);
+    int32 length = endByte - startByte;
+    int32 absoluteOffset = baseOffset + startByte;
+
+    // Detect inline formatting
+    StyleRun::Type styleType = StyleRun::NORMAL;
+
+    if (strcmp(nodeType, "strong_emphasis") == 0) {
+        styleType = StyleRun::STRONG;
+    } else if (strcmp(nodeType, "emphasis") == 0) {
+        styleType = StyleRun::EMPHASIS;
+    } else if (strcmp(nodeType, "code_span") == 0) {
+        styleType = StyleRun::CODE_INLINE;
+    } else if (strcmp(nodeType, "inline_link") == 0 || strcmp(nodeType, "shortcut_link") == 0) {
+        styleType = StyleRun::LINK;
+    }
+
+    if (styleType != StyleRun::NORMAL) {
+        CreateStyleRun(absoluteOffset, length, styleType);
+    }
+
+    // Recurse to children
+    uint32_t childCount = ts_node_child_count(node);
+    for (uint32_t i = 0; i < childCount; i++) {
+        TSNode child = ts_node_child(node, i);
+        ProcessInlineNode(child, baseOffset);
     }
 }
 
@@ -548,6 +606,23 @@ int32 MarkdownParser::GetLineForOffset(int32 offset) const
     }
 
     return line;
+}
+
+std::vector<StyleRun> MarkdownParser::GetStyleRunsInRange(int32 startOffset, int32 endOffset) const
+{
+    std::vector<StyleRun> result;
+
+    // Filter style runs that overlap with the requested range
+    for (const StyleRun& run : fStyleRuns) {
+        int32 runEnd = run.offset + run.length;
+
+        // Check if run overlaps with requested range
+        if (run.offset < endOffset && runEnd > startOffset) {
+            result.push_back(run);
+        }
+    }
+
+    return result;
 }
 
 void MarkdownParser::SetFont(StyleRun::Type type, const BFont& font)

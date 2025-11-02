@@ -67,6 +67,7 @@ public:
 
 private:
     void            MarkupText(const char* text);
+    void            ApplyStyles(int32 startOffset, int32 length);
 
     BMessage*       GetOutlineAt(int32 offset, bool withNames = false);
     BMessage*       GetDocumentOutline(bool withNames = false, bool withDetails = false);

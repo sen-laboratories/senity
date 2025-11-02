@@ -168,22 +168,141 @@ void EditorTextView::SetText(const char* text, const text_run_array* runs)
 
 void EditorTextView::DeleteText(int32 start, int32 finish)
 {
+    if (!fMarkdownParser) {
+        BTextView::DeleteText(start, finish);
+        return;
+    }
+
+    // Get line and column info BEFORE deletion
+    int32 startLine = LineAt(start);
+    int32 oldEndLine = LineAt(finish);
+    int32 oldLength = finish - start;
+
+    // Calculate columns (offset from line start)
+    int32 startColumn = start - OffsetAt(startLine);
+    int32 oldEndColumn = finish - OffsetAt(oldEndLine);
+
+    // Perform deletion
     BTextView::DeleteText(start, finish);
 
-    if (fMarkdownParser) {
-        MarkupText(Text());
+    // Get new end line and column AFTER deletion
+    int32 newEndLine = LineAt(start);
+    int32 newEndColumn = start - OffsetAt(newEndLine);
+
+    // Get text efficiently using GetText
+    int32 textLen = TextLength();
+    char* fullText = new char[textLen + 1];
+    GetText(0, textLen, fullText);
+    fullText[textLen] = '\0';
+
+    // Incremental parse with line and column counts
+    fMarkdownParser->ParseIncremental(fullText, start, oldLength, 0,
+                                     startLine, startColumn,
+                                     oldEndLine, oldEndColumn,
+                                     newEndLine, newEndColumn);
+
+    delete[] fullText;
+
+    // Apply styles to affected block (from start of line to next blank line or end)
+    int32 blockStart = OffsetAt(startLine);
+    int32 blockEnd = textLen;
+
+    // Find end of current block (next blank line or end of document)
+    for (int32 line = startLine; line < CountLines(); line++) {
+        int32 lineStart = OffsetAt(line);
+        int32 lineEnd = OffsetAt(line + 1);
+        if (lineEnd > lineStart) {
+            char lineText[lineEnd - lineStart + 1];
+            GetText(lineStart, lineEnd - lineStart, lineText);
+            lineText[lineEnd - lineStart] = '\0';
+
+            // Check if line is blank (only whitespace/newline)
+            bool blank = true;
+            for (int i = 0; lineText[i] && lineText[i] != '\n'; i++) {
+                if (lineText[i] != ' ' && lineText[i] != '\t') {
+                    blank = false;
+                    break;
+                }
+            }
+
+            if (blank && line > startLine) {
+                blockEnd = lineStart;
+                break;
+            }
+        }
     }
+
+    ApplyStyles(blockStart, blockEnd - blockStart);
 
     UpdateStatus();
 }
 
 void EditorTextView::InsertText(const char* text, int32 length, int32 offset, const text_run_array* runs)
 {
+    if (!fMarkdownParser) {
+        BTextView::InsertText(text, length, offset, runs);
+        return;
+    }
+
+    // Get line and column info BEFORE insertion
+    int32 startLine = LineAt(offset);
+    int32 oldEndLine = startLine;  // Same line before insertion
+
+    // Calculate columns
+    int32 startColumn = offset - OffsetAt(startLine);
+    int32 oldEndColumn = startColumn;  // Same position before insertion
+
+    // Perform insertion
     BTextView::InsertText(text, length, offset, runs);
 
-    if (fMarkdownParser) {
-        MarkupText(Text());
+    // Get new end line and column AFTER insertion
+    int32 newEndLine = LineAt(offset + length);
+    int32 newEndColumn = (offset + length) - OffsetAt(newEndLine);
+
+    // Get text efficiently using GetText
+    int32 textLen = TextLength();
+    char* fullText = new char[textLen + 1];
+    GetText(0, textLen, fullText);
+    fullText[textLen] = '\0';
+
+    // Incremental parse with line and column counts
+    fMarkdownParser->ParseIncremental(fullText, offset, 0, length,
+                                     startLine, startColumn,
+                                     oldEndLine, oldEndColumn,
+                                     newEndLine, newEndColumn);
+
+    delete[] fullText;
+
+    // Apply styles to affected block (from start of line to next blank line or end)
+    int32 blockStart = OffsetAt(startLine);
+    int32 blockEnd = textLen;
+
+    // Find end of current block (next blank line or end of document)
+    for (int32 line = startLine; line < CountLines(); line++) {
+        int32 lineStart = OffsetAt(line);
+        int32 lineEnd = OffsetAt(line + 1);
+        if (lineEnd > lineStart) {
+            char lineText[lineEnd - lineStart + 1];
+            GetText(lineStart, lineEnd - lineStart, lineText);
+            lineText[lineEnd - lineStart] = '\0';
+
+            // Check if line is blank (only whitespace/newline)
+            bool blank = true;
+            for (int i = 0; lineText[i] && lineText[i] != '\n'; i++) {
+                if (lineText[i] != ' ' && lineText[i] != '\t') {
+                    blank = false;
+                    break;
+                }
+            }
+
+            if (blank && line > startLine) {
+                blockEnd = lineStart;
+                break;
+            }
+        }
     }
+
+    ApplyStyles(blockStart, blockEnd - blockStart);
 
     UpdateStatus();
 }
@@ -369,14 +488,44 @@ void EditorTextView::MarkupText(const char* text)
     }
 
     // Apply all style runs
-    const std::vector<StyleRun>& runs = fMarkdownParser->GetStyleRuns();
+    ApplyStyles(0, TextLength());
+}
 
+void EditorTextView::ApplyStyles(int32 startOffset, int32 length)
+{
+    if (!fMarkdownParser) return;
+
+    int32 endOffset = startOffset + length;
+    int32 textLen = TextLength();
+    if (endOffset > textLen) endOffset = textLen;
+
+    // CRITICAL: Reset all formatting in the affected range to defaults first
+    // This clears old styles that might have been removed (e.g., closing * deleted)
+    SetFontAndColor(
+        startOffset,
+        endOffset,
+        fTextFont,
+        B_FONT_ALL,
+        &textColor
+    );
+
+    // Now apply the new style runs from parser
+    std::vector<StyleRun> runs = fMarkdownParser->GetStyleRunsInRange(startOffset, endOffset);
+
+    // Apply each style run
     for (const StyleRun& run : runs) {
         if (run.offset < 0 || run.length <= 0) continue;
 
+        int32 start = run.offset;
+        int32 end = run.offset + run.length;
+
+        // Bounds check
+        if (start >= textLen) continue;
+        if (end > textLen) end = textLen;
+
         SetFontAndColor(
-            run.offset,
-            run.offset + run.length,
+            start,
+            end,
             &run.font,
             B_FONT_ALL,
             &run.foreground
@@ -385,8 +534,9 @@ void EditorTextView::MarkupText(const char* text)
 
     // Notify editor handler about outline update
     BMessage* outline = fMarkdownParser->GetOutline();
-    if (fEditorHandler) {
-        BMessenger(fEditorHandler).SendMessage(outline);
+    if (fEditorHandler && outline) {
+        BMessage outlineCopy(*outline);
+        BMessenger(fEditorHandler).SendMessage(&outlineCopy);
     }
 }
 
