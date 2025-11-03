@@ -10,6 +10,8 @@
 #include <vector>
 #include <map>
 
+#include "StyleRun.h"
+
 extern "C" {
 #include <tree_sitter/api.h>
 }
@@ -21,49 +23,6 @@ extern "C" const TSLanguage *tree_sitter_markdown_inline();
 inline TSNode ts_null_node = {0}; // This is a valid null node.
 
 class SyntaxHighlighter;
-
-// Represents a styled region of text
-struct StyleRun {
-    int32 offset;
-    int32 length;
-
-    enum Type {
-        NORMAL,
-        HEADING_1,
-        HEADING_2,
-        HEADING_3,
-        HEADING_4,
-        HEADING_5,
-        HEADING_6,
-        CODE_INLINE,
-        CODE_BLOCK,
-        EMPHASIS,
-        STRONG,
-        LINK,
-        LINK_URL,
-        LIST_BULLET,
-        LIST_NUMBER,
-        BLOCKQUOTE,
-        TASK_MARKER_UNCHECKED,
-        TASK_MARKER_CHECKED,
-        // Syntax highlighting types
-        SYNTAX_KEYWORD,
-        SYNTAX_TYPE,
-        SYNTAX_FUNCTION,
-        SYNTAX_STRING,
-        SYNTAX_NUMBER,
-        SYNTAX_COMMENT,
-        SYNTAX_OPERATOR
-    } type;
-
-    rgb_color foreground;
-    rgb_color background;
-    BFont font;
-
-    BString language;  // For code blocks
-    BString url;       // For links
-    BString text;      // For replacements (Unicode symbols)
-};
 
 class MarkdownParser {
 public:
@@ -82,7 +41,7 @@ public:
 
     // Get style runs for rendering
     const std::vector<StyleRun>& GetStyleRuns() const { return fStyleRuns; }
-    
+
     // Get style runs for a specific range (more efficient for partial updates)
     std::vector<StyleRun> GetStyleRunsInRange(int32 startOffset, int32 endOffset) const;
 

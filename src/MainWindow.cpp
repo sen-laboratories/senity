@@ -118,12 +118,16 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgNewFile:
 		{
 			fSaveMenuItem->SetEnabled(false);
-			    const char* markdown = R"(
-# My Document
+			    const char* markdown = R"(# Welcome to SENity
+
+## A semantic editor for your thoughts
 
 This is a **bold** statement with some `inline code`.
 
 Link to [se docs](http://sen.docs.org).
+
+* [ ] some task
+* [x] some completed task
 
 ## Code Example
 

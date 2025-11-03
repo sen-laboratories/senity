@@ -16,7 +16,7 @@ MarkdownParser::MarkdownParser()
     , fSourceText(nullptr)
     , fSourceCopy(nullptr)
     , fSyntaxHighlighter(nullptr)
-    , fDebugEnabled(false)
+    , fDebugEnabled(true)
     , fUseUnicodeSymbols(true)
 {
     // Create tree-sitter parser for block-level markdown

@@ -5,6 +5,7 @@
 
 #include "ColorDefs.h"
 #include "EditorTextView.h"
+#include "StyleRun.h"
 
 #include <iostream>
 #include <Clipboard.h>
@@ -12,11 +13,44 @@
 #include <MenuItem.h>
 #include <Message.h>
 #include <Messenger.h>
+#include <PopUpMenu.h>
 #include <Region.h>
 #include <Window.h>
 
 #include <cstdio>
 #include <cstring>
+#include <strings.h>
+
+// Color mapping for Markdown elements
+static const struct {
+    StyleRun::Type type;
+    rgb_color color;
+} COLOR_MAP[] = {
+    {StyleRun::Type::NORMAL, {0, 0, 0, 255}},           // black
+    {StyleRun::Type::LINK, {0, 102, 204, 255}},         // blue
+    {StyleRun::Type::CODE_INLINE, {60, 60, 60, 255}},   // gray
+    {StyleRun::Type::CODE_BLOCK, {60, 60, 60, 255}},    // gray
+    {StyleRun::Type::LIST_BULLET, {128, 128, 128, 255}}, // gray
+    {StyleRun::Type::LIST_NUMBER, {128, 128, 128, 255}}, // gray
+    {StyleRun::Type::TASK_MARKER_UNCHECKED, {128, 128, 128, 255}}, // gray
+    {StyleRun::Type::TASK_MARKER_CHECKED, {0, 150, 0, 255}},        // green
+    {StyleRun::Type::HEADING_1, {0, 102, 204, 255}},    // blue (bold via font)
+    {StyleRun::Type::HEADING_2, {0, 102, 204, 255}},    // blue
+    {StyleRun::Type::HEADING_3, {0, 102, 204, 255}},    // blue
+    {StyleRun::Type::HEADING_4, {0, 102, 204, 255}},    // blue
+    {StyleRun::Type::HEADING_5, {0, 102, 204, 255}},    // blue
+    {StyleRun::Type::HEADING_6, {0, 102, 204, 255}},    // blue
+};
+
+static rgb_color GetColorForType(StyleRun::Type type) {
+    for (size_t i = 0; i < sizeof(COLOR_MAP) / sizeof(COLOR_MAP[0]); i++) {
+        if (COLOR_MAP[i].type == type) {
+            return COLOR_MAP[i].color;
+        }
+    }
+    // Default to black
+    return {0, 0, 0, 255};
+}
 
 struct NodeHighlightData {
     bool isHighlighted;
@@ -53,23 +87,24 @@ EditorTextView::EditorTextView(StatusBar *statusView, BHandler *editorHandler)
     fLinkFont->SetFace(B_UNDERSCORE_FACE);
     fCodeFont = new BFont(be_fixed_font);
 
-    // Configure parser fonts and colors
-    fMarkdownParser->SetFont(StyleRun::NORMAL, *fTextFont);
-    fMarkdownParser->SetFont(StyleRun::CODE_INLINE, *fCodeFont);
-    fMarkdownParser->SetFont(StyleRun::CODE_BLOCK, *fCodeFont);
-    fMarkdownParser->SetFont(StyleRun::LINK, *fLinkFont);
+    // Configure parser fonts and colors using map
+    fMarkdownParser->SetFont(StyleRun::Type::NORMAL, *fTextFont);
+    fMarkdownParser->SetFont(StyleRun::Type::CODE_INLINE, *fCodeFont);
+    fMarkdownParser->SetFont(StyleRun::Type::CODE_BLOCK, *fCodeFont);
+    fMarkdownParser->SetFont(StyleRun::Type::LINK, *fLinkFont);
 
-    fMarkdownParser->SetColor(StyleRun::NORMAL, textColor);
-    fMarkdownParser->SetColor(StyleRun::LINK, linkColor);
-    fMarkdownParser->SetColor(StyleRun::CODE_INLINE, codeColor);
-    fMarkdownParser->SetColor(StyleRun::CODE_BLOCK, codeColor);
+    fMarkdownParser->SetColor(StyleRun::Type::NORMAL, GetColorForType(StyleRun::Type::NORMAL));
+    fMarkdownParser->SetColor(StyleRun::Type::LINK, GetColorForType(StyleRun::Type::LINK));
+    fMarkdownParser->SetColor(StyleRun::Type::CODE_INLINE, GetColorForType(StyleRun::Type::CODE_INLINE));
+    fMarkdownParser->SetColor(StyleRun::Type::CODE_BLOCK, GetColorForType(StyleRun::Type::CODE_BLOCK));
 
     // Heading fonts
     for (int i = 0; i < 6; i++) {
         BFont headingFont(be_bold_font);
         headingFont.SetSize(24 - i * 2);
-        fMarkdownParser->SetFont((StyleRun::Type)(StyleRun::HEADING_1 + i), headingFont);
-        fMarkdownParser->SetColor((StyleRun::Type)(StyleRun::HEADING_1 + i), headerColor);
+        fMarkdownParser->SetFont((StyleRun::Type)(StyleRun::Type::HEADING_1 + i), headingFont);
+        fMarkdownParser->SetColor((StyleRun::Type)(StyleRun::Type::HEADING_1 + i),
+                                  GetColorForType((StyleRun::Type)(StyleRun::Type::HEADING_1 + i)));
     }
 
     SetStylable(true);
@@ -96,9 +131,68 @@ EditorTextView::~EditorTextView()
     }
 }
 
+void EditorTextView::AttachedToWindow()
+{
+    BTextView::MakeFocus(true);
+}
+
 void EditorTextView::Draw(BRect updateRect)
 {
     BTextView::Draw(updateRect);
+
+    // Draw Unicode symbols over ASCII markdown characters
+    if (fMarkdownParser) {
+        // Get all runs in visible area
+        int32 startOffset = OffsetAt(updateRect.LeftTop());
+        int32 endOffset = OffsetAt(updateRect.RightBottom());
+        if (endOffset < startOffset) endOffset = TextLength();
+        
+        std::vector<StyleRun> runs = fMarkdownParser->GetStyleRunsInRange(startOffset, endOffset);
+        
+        for (const StyleRun& run : runs) {
+            // Only process runs with replacement text
+            if (run.text.IsEmpty()) {
+                continue;
+            }
+            
+            // Get the actual text in document
+            char* buffer = new char[run.length + 1];
+            GetText(run.offset, run.length, buffer);
+            buffer[run.length] = '\0';
+            
+            // Only draw if different from replacement
+            if (strcmp(buffer, run.text.String()) != 0) {
+                // Get position (top of line) and height
+                float height;
+                BPoint topPoint = PointAt(run.offset, &height);
+                
+                // Calculate width of text to cover
+                float textWidth = run.font.StringWidth(buffer);
+                
+                // Create rect covering the ASCII text
+                BRect coverRect(topPoint.x, topPoint.y,
+                               topPoint.x + textWidth, topPoint.y + height);
+                
+                // Cover ASCII with background
+                rgb_color viewColor = ViewColor();
+                SetHighColor(viewColor);
+                FillRect(coverRect);
+                
+                // DrawString needs baseline position, not top
+                // Get font metrics to calculate baseline
+                font_height fh;
+                run.font.GetHeight(&fh);
+                BPoint baseline(topPoint.x, topPoint.y + fh.ascent);
+                
+                // Draw Unicode symbol at baseline
+                SetHighColor(run.foreground);
+                SetFont(&run.font);
+                DrawString(run.text.String(), baseline);
+            }
+            
+            delete[] buffer;
+        }
+    }
 
     if (!fTextHighlights || fTextHighlights->empty()) {
         return;
@@ -203,34 +297,9 @@ void EditorTextView::DeleteText(int32 start, int32 finish)
 
     delete[] fullText;
 
-    // Apply styles to affected block (from start of line to next blank line or end)
-    int32 blockStart = OffsetAt(startLine);
-    int32 blockEnd = textLen;
-
-    // Find end of current block (next blank line or end of document)
-    for (int32 line = startLine; line < CountLines(); line++) {
-        int32 lineStart = OffsetAt(line);
-        int32 lineEnd = OffsetAt(line + 1);
-        if (lineEnd > lineStart) {
-            char lineText[lineEnd - lineStart + 1];
-            GetText(lineStart, lineEnd - lineStart, lineText);
-            lineText[lineEnd - lineStart] = '\0';
-
-            // Check if line is blank (only whitespace/newline)
-            bool blank = true;
-            for (int i = 0; lineText[i] && lineText[i] != '\n'; i++) {
-                if (lineText[i] != ' ' && lineText[i] != '\t') {
-                    blank = false;
-                    break;
-                }
-            }
-
-            if (blank && line > startLine) {
-                blockEnd = lineStart;
-                break;
-            }
-        }
-    }
+    // Apply styles to affected block (find both start and end)
+    int32 blockStart = FindBlockStart(startLine);
+    int32 blockEnd = FindBlockEnd(startLine);
 
     ApplyStyles(blockStart, blockEnd - blockStart);
 
@@ -273,34 +342,9 @@ void EditorTextView::InsertText(const char* text, int32 length, int32 offset, co
 
     delete[] fullText;
 
-    // Apply styles to affected block (from start of line to next blank line or end)
-    int32 blockStart = OffsetAt(startLine);
-    int32 blockEnd = textLen;
-
-    // Find end of current block (next blank line or end of document)
-    for (int32 line = startLine; line < CountLines(); line++) {
-        int32 lineStart = OffsetAt(line);
-        int32 lineEnd = OffsetAt(line + 1);
-        if (lineEnd > lineStart) {
-            char lineText[lineEnd - lineStart + 1];
-            GetText(lineStart, lineEnd - lineStart, lineText);
-            lineText[lineEnd - lineStart] = '\0';
-
-            // Check if line is blank (only whitespace/newline)
-            bool blank = true;
-            for (int i = 0; lineText[i] && lineText[i] != '\n'; i++) {
-                if (lineText[i] != ' ' && lineText[i] != '\t') {
-                    blank = false;
-                    break;
-                }
-            }
-
-            if (blank && line > startLine) {
-                blockEnd = lineStart;
-                break;
-            }
-        }
-    }
+    // Apply styles to affected block (find both start and end)
+    int32 blockStart = FindBlockStart(startLine);
+    int32 blockEnd = FindBlockEnd(startLine);
 
     ApplyStyles(blockStart, blockEnd - blockStart);
 
@@ -312,65 +356,63 @@ void EditorTextView::MessageReceived(BMessage* message)
     switch (message->what) {
         case 'HLIT':
         {
-            std::cout << "got highlight message:" << std::endl;
-            message->PrintToStream();
+            // Handle highlight message
+            int32 start, end;
+            int32 colorCode;
 
-            // Apply highlight from context menu
-            int32 start, end, colorIndex;
             if (message->FindInt32("start", &start) == B_OK &&
                 message->FindInt32("end", &end) == B_OK &&
-                message->FindInt32("color", &colorIndex) == B_OK) {
+                message->FindInt32("color", &colorCode) == B_OK) {
 
-                ColorDefs colorDefs;
-                rgb_color* color = colorDefs.GetColor((COLOR_NAME)colorIndex);
-
-                if (color) {
-                    // Light background version of the color (add alpha/blend)
-                    rgb_color bgColor = *color;
-                    bgColor.alpha = 80;  // Semi-transparent
-
-                    Highlight(start, end, color, &bgColor, false, false);
+                // Map color code to actual color (using ColorDefs.h constants)
+                // This assumes COLOR_MAGENTA, COLOR_PURPLE, etc. are defined
+                rgb_color color;
+                switch (colorCode) {
+                    case COLOR_MAGENTA:
+                        color = {255, 0, 255, 255};
+                        break;
+                    case COLOR_PURPLE:
+                        color = {128, 0, 128, 255};
+                        break;
+                    case COLOR_GOLD:
+                        color = {255, 215, 0, 255};
+                        break;
+                    case COLOR_CYAN:
+                        color = {0, 255, 255, 255};
+                        break;
+                    default:
+                        color = {255, 255, 0, 255}; // yellow fallback
+                        break;
                 }
+
+                Highlight(start, end, &color, nullptr, false, false);
             }
             break;
         }
 
         case 'CLRH':
         {
-            // Clear highlights in range
+            // Clear highlight in range
             int32 start, end;
             if (message->FindInt32("start", &start) == B_OK &&
                 message->FindInt32("end", &end) == B_OK) {
-
-                // Remove highlights that overlap this range
-                std::vector<int32> toRemove;
-                for (auto& pair : *fTextHighlights) {
-                    text_highlight* hl = pair.second;
-                    if (hl->startOffset < end && hl->endOffset > start) {
-                        toRemove.push_back(pair.first);
+                // Remove highlights in this range
+                auto it = fTextHighlights->begin();
+                while (it != fTextHighlights->end()) {
+                    text_highlight* hl = it->second;
+                    if (hl->startOffset >= start && hl->endOffset <= end) {
+                        BRect invalidRect = hl->region->Frame();
+                        delete hl->region;
+                        delete hl;
+                        it = fTextHighlights->erase(it);
+                        Invalidate(invalidRect);
+                    } else {
+                        ++it;
                     }
                 }
-
-                for (int32 key : toRemove) {
-                    auto it = fTextHighlights->find(key);
-                    if (it != fTextHighlights->end()) {
-                        delete it->second->region;
-                        delete it->second;
-                        fTextHighlights->erase(it);
-                    }
-                }
-
-                Invalidate();
             }
             break;
         }
-
-        case B_COPY:
-        case B_CUT:
-        case B_PASTE:
-            BTextView::MessageReceived(message);
-            UpdateStatus();
-            break;
 
         default:
             BTextView::MessageReceived(message);
@@ -378,159 +420,137 @@ void EditorTextView::MessageReceived(BMessage* message)
     }
 }
 
-void EditorTextView::KeyDown(const char* bytes, int32 numBytes)
-{
-    BTextView::KeyDown(bytes, numBytes);
-    UpdateStatus();
-}
-
 void EditorTextView::MouseDown(BPoint where)
 {
-    uint32 buttons = 0;
+    uint32 buttons;
     Window()->CurrentMessage()->FindInt32("buttons", (int32*)&buttons);
 
-    // Right-click - show context menu
     if (buttons & B_SECONDARY_MOUSE_BUTTON) {
+        // Right-click: build and show context menu
         int32 start, end;
         GetSelection(&start, &end);
 
-        if (start < end) {
-            // Has selection - show highlight menu
+        if (start != end) {
             BuildContextSelectionMenu();
         } else {
-            // No selection - show general menu
             BuildContextMenu();
         }
-        return;
-    }
-
-    // Normal left-click handling
-    BTextView::MouseDown(where);
-
-    // Check if clicking on a link
-    int32 offset = OffsetAt(where);
-    TSNode node = fMarkdownParser->GetNodeAtOffset(offset);
-
-    if (!ts_node_is_null(node)) {
-        // Check for link
-        const char* nodeType = ts_node_type(node);
-        if (strcmp(nodeType, "inline_link") == 0 || strcmp(nodeType, "shortcut_link") == 0) {
-            // Get URL from link_destination child
-            TSNode destNode = ts_node_child_by_field_name(node, "link_destination", 16);
-            if (!ts_node_is_null(destNode)) {
-                uint32_t start = ts_node_start_byte(destNode);
-                uint32_t end = ts_node_end_byte(destNode);
-                const char* source = Text();
-                BString url(source + start, end - start);
-
-                // Handle link click - send message to editor handler
-                BMessage linkMsg('LINK');
-                linkMsg.AddString("url", url);
-                linkMsg.AddInt32("offset", offset);
-
-                if (fEditorHandler) {
-                    fEditorHandler->MessageReceived(&linkMsg);
-                }
-                return;
-            }
-        }
-    }
-
-    // Check if clicking on a highlight (offset-based, not node-based)
-    for (const auto& pair : *fTextHighlights) {
-        text_highlight* hl = pair.second;
-        if (offset >= hl->startOffset && offset < hl->endOffset) {
-            // Handle highlight click
-            BMessage highlightMsg('HLIT');
-            highlightMsg.AddInt32("offset", offset);
-            highlightMsg.AddInt32("start", hl->startOffset);
-            highlightMsg.AddInt32("end", hl->endOffset);
-
-            if (fEditorHandler) {
-                fEditorHandler->MessageReceived(&highlightMsg);
-            }
-            return;
-        }
-    }
-
-    UpdateStatus();
-}
-
-void EditorTextView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessage)
-{
-    BTextView::MouseMoved(where, code, dragMessage);
-
-    if (code == B_INSIDE_VIEW) {
-        int32 offset = OffsetAt(where);
-        TSNode node = fMarkdownParser->GetNodeAtOffset(offset);
-
-        if (!ts_node_is_null(node)) {
-            const char* nodeType = ts_node_type(node);
-            if (strcmp(nodeType, "inline_link") == 0 || strcmp(nodeType, "shortcut_link") == 0) {
-                SetViewCursor(&linkCursor);
-            } else {
-                // TODO: handle contextMenuCursor
-                SetViewCursor(B_CURSOR_I_BEAM);
-            }
-        } else {
-            SetViewCursor(B_CURSOR_I_BEAM);
-        }
+    } else {
+        BTextView::MouseDown(where);
     }
 }
 
 void EditorTextView::MarkupText(const char* text)
 {
-    if (!text || !fMarkdownParser) return;
-
-    // Full parse
-    if (!fMarkdownParser->Parse(text)) {
+    if (!fMarkdownParser) {
         return;
     }
 
-    // Apply all style runs
-    ApplyStyles(0, TextLength());
+    fMarkdownParser->Parse(text);
+    ApplyStyles(0, strlen(text));
 }
 
-void EditorTextView::ApplyStyles(int32 startOffset, int32 length)
+int32 EditorTextView::FindBlockStart(int32 line) const
 {
-    if (!fMarkdownParser) return;
+    // Find the start of the markdown block containing this line
+    if (line <= 0) return 0;
 
-    int32 endOffset = startOffset + length;
-    int32 textLen = TextLength();
-    if (endOffset > textLen) endOffset = textLen;
+    int32 offset = OffsetAt(line);
 
-    // CRITICAL: Reset all formatting in the affected range to defaults first
-    // This clears old styles that might have been removed (e.g., closing * deleted)
-    SetFontAndColor(
-        startOffset,
-        endOffset,
-        fTextFont,
-        B_FONT_ALL,
-        &textColor
-    );
+    // Walk backwards to find a blank line or start of document
+    while (line > 0) {
+        int32 lineStart = OffsetAt(line);
+        int32 lineEnd = OffsetAt(line + 1);
 
-    // Now apply the new style runs from parser
-    std::vector<StyleRun> runs = fMarkdownParser->GetStyleRunsInRange(startOffset, endOffset);
+        // Check if line is blank (only whitespace)
+        bool blank = true;
+        for (int32 i = lineStart; i < lineEnd; i++) {
+            char c = ByteAt(i);
+            if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
+                blank = false;
+                break;
+            }
+        }
 
-    // Apply each style run
+        if (blank) {
+            return OffsetAt(line + 1);  // Start of next line
+        }
+
+        line--;
+    }
+
+    return 0;
+}
+
+int32 EditorTextView::FindBlockEnd(int32 line) const
+{
+    // Find the end of the markdown block containing this line
+    int32 totalLines = CountLines();
+
+    // Walk forward to find a blank line or end of document
+    while (line < totalLines - 1) {
+        int32 lineStart = OffsetAt(line);
+        int32 lineEnd = OffsetAt(line + 1);
+
+        // Check if line is blank
+        bool blank = true;
+        for (int32 i = lineStart; i < lineEnd; i++) {
+            char c = ByteAt(i);
+            if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
+                blank = false;
+                break;
+            }
+        }
+
+        if (blank) {
+            return lineStart;  // End at start of blank line
+        }
+
+        line++;
+    }
+
+    return TextLength();
+}
+
+void EditorTextView::ApplyStyles(int32 offset, int32 length)
+{
+    if (!fMarkdownParser || length == 0) {
+        return;
+    }
+
+    std::vector<StyleRun> runs = fMarkdownParser->GetStyleRunsInRange(offset, offset + length);
+
+    // First, fill entire range with NORMAL style to prevent style bleeding
+    BFont normalFont = *fTextFont;
+    rgb_color normalColor = GetColorForType(StyleRun::Type::NORMAL);
+    SetFontAndColor(offset, offset + length, &normalFont, B_FONT_ALL, &normalColor);
+
+    // Then apply specific styles
     for (const StyleRun& run : runs) {
-        if (run.offset < 0 || run.length <= 0) continue;
-
         int32 start = run.offset;
         int32 end = run.offset + run.length;
 
-        // Bounds check
-        if (start >= textLen) continue;
-        if (end > textLen) end = textLen;
+        // Clamp to requested range
+        if (start < offset) start = offset;
+        if (end > offset + length) end = offset + length;
 
-        SetFontAndColor(
-            start,
-            end,
-            &run.font,
-            B_FONT_ALL,
-            &run.foreground
-        );
+        // Apply font face modifiers
+        BFont font = run.font;
+
+        if (run.type == StyleRun::Type::UNDERLINE) {
+            font.SetFace(font.Face() | B_UNDERSCORE_FACE);
+        }
+
+        if (run.type == StyleRun::Type::STRIKETHROUGH) {
+            font.SetFace(font.Face() | B_STRIKEOUT_FACE);
+        }
+
+        // Apply font and color styling
+        SetFontAndColor(start, end, &font, B_FONT_ALL, &run.foreground);
     }
+    
+    // Invalidate to trigger Draw() for Unicode symbol rendering
+    Invalidate();
 
     // Notify editor handler about outline update
     BMessage* outline = fMarkdownParser->GetOutline();
@@ -557,14 +577,18 @@ void EditorTextView::Highlight(int32 startOffset, int32 endOffset,
 {
     if (!fMarkdownParser) return;
 
+    // Default colors
+    static const rgb_color defaultText = {0, 0, 0, 255};
+    static const rgb_color defaultBg = {255, 255, 255, 255};
+
     // Store highlight in our map (offset-based, not node-based)
     text_highlight* highlight = new text_highlight();
     highlight->startOffset = startOffset;
     highlight->endOffset = endOffset;
     highlight->generated = generated;
     highlight->outline = outline;
-    highlight->fgColor = fgColor ? fgColor : &textColor;
-    highlight->bgColor = bgColor ? bgColor : &backgroundColor;
+    highlight->fgColor = fgColor ? fgColor : &defaultText;
+    highlight->bgColor = bgColor ? bgColor : &defaultBg;
     highlight->region = new BRegion();
 
     // Calculate region for this highlight
@@ -606,18 +630,17 @@ BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames)
     BMessage* msg = new BMessage('OUTL');
 
     if (!fMarkdownParser) {
-        return msg;  // Return empty message, not nullptr
+        return msg;
     }
 
     TSNode node = fMarkdownParser->GetNodeAtOffset(offset);
     if (ts_node_is_null(node)) {
-        return msg;  // Return empty message, not nullptr
+        return msg;
     }
 
     // Check if this is a heading node
     const char* nodeType = ts_node_type(node);
     if (strcmp(nodeType, "atx_heading") != 0) {
-        // Not a heading, return empty
         return msg;
     }
 
@@ -668,7 +691,7 @@ BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames)
 BMessage* EditorTextView::GetDocumentOutline(bool withNames, bool withDetails)
 {
     if (!fMarkdownParser) {
-        return new BMessage();  // Return empty message, not nullptr
+        return new BMessage();
     }
 
     return fMarkdownParser->GetOutline();
@@ -690,10 +713,8 @@ void EditorTextView::UpdateStatus()
     }
 
     if (start == end) {
-        // Just cursor position, no selection
         fStatusBar->UpdatePosition(start, line, column);
     } else {
-        // Has selection
         fStatusBar->UpdateSelection(start, end);
     }
 }
@@ -709,7 +730,7 @@ void EditorTextView::BuildContextSelectionMenu()
     GetSelection(&start, &end);
 
     if (start == end) {
-        return; // no selection
+        return;
     }
 
     if (start > end) {
@@ -752,7 +773,6 @@ void EditorTextView::BuildContextSelectionMenu()
 
     menu->SetTargetForItems(this);
 
-    // Show menu at selection
     BPoint point = PointAt(start);
     ConvertToScreen(&point);
 
