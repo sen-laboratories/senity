@@ -60,28 +60,54 @@ void StatusBar::UpdateSelection(int32 selectionStart, int32 selectionEnd) {
 void StatusBar::UpdateOutline(const BMessage* outlineItems) {
     if (outlineItems == NULL || outlineItems->IsEmpty()) {
         fOutline->SetText("");
-        printf("no outline to show.\n");
+        return;
+    }
+
+    // Get count of heading messages
+    type_code type;
+    int32 count = 0;
+    if (outlineItems->GetInfo("heading", &type, &count) != B_OK || count == 0) {
+        fOutline->SetText("-");
         return;
     }
 
     BString outline;
-    int32 *count;
 
-    for (int i = 0; i < outlineItems->CountNames(B_POINTER_TYPE); i++) {
-        char  *key[B_ATTR_NAME_LENGTH];
-        type_code type;
-        status_t result = outlineItems->GetInfo(B_POINTER_TYPE, i, key, &type, NULL);
-        if (result != B_OK) {
-            printf("error processing text outline: %s\n", strerror(result));
-            fOutline->SetText("???");
-            return;
+    // Iterate through heading messages
+    for (int32 i = 0; i < count; i++) {
+        BMessage heading;
+        if (outlineItems->FindMessage("heading", i, &heading) != B_OK) {
+            continue;
         }
+
+        const char* text = NULL;
+        int32 level = 0;
+
+        heading.FindString("text", &text);
+        heading.FindInt32("level", &level);
+
+        if (text == NULL || strlen(text) == 0) {
+            continue;
+        }
+
+        // Shorten name for outline display
+        BString shortName(text);
+        if (shortName.Length() > 20) {
+            shortName.Truncate(19);
+            shortName.Append(B_UTF8_ELLIPSIS);
+        }
+
+        // Add separator before each item except first
         if (i > 0) {
-            // add separator
             outline << " > ";
         }
-        outline << *key;
+
+        outline << shortName;
     }
-    printf("outline: %s\n", outline.String());
+
+    if (outline.IsEmpty()) {
+        outline = "-";
+    }
+
     fOutline->SetText(outline.String());
 }

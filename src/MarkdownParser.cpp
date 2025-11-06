@@ -66,20 +66,26 @@ void MarkdownParser::InitializeDefaultStyles()
     BFont fixedFont(be_fixed_font);
     BFont boldFont(be_bold_font);
 
-    fFonts[StyleRun::NORMAL] = plainFont;
-    fFonts[StyleRun::CODE_INLINE] = fixedFont;
-    fFonts[StyleRun::CODE_BLOCK] = fixedFont;
-    fFonts[StyleRun::STRONG] = boldFont;
+    fFonts[StyleRun::Type::NORMAL] = plainFont;
+    fFonts[StyleRun::Type::CODE_INLINE] = fixedFont;
+    fFonts[StyleRun::Type::CODE_BLOCK] = fixedFont;
+    fFonts[StyleRun::Type::STRONG] = boldFont;
 
     BFont emphasisFont(plainFont);
     emphasisFont.SetFace(B_ITALIC_FACE);
-    fFonts[StyleRun::EMPHASIS] = emphasisFont;
+    fFonts[StyleRun::Type::EMPHASIS] = emphasisFont;
 
     for (int i = 0; i < 6; i++) {
         BFont headingFont(be_bold_font);
         headingFont.SetSize(24 - i * 2);
-        fFonts[(StyleRun::Type)(StyleRun::HEADING_1 + i)] = headingFont;
+        fFonts[(StyleRun::Type)(StyleRun::Type::HEADING_1 + i)] = headingFont;
     }
+
+    // Table styles
+    fFonts[StyleRun::Type::TABLE_HEADER] = boldFont;
+    fFonts[StyleRun::Type::TABLE_CELL] = plainFont;
+    fFonts[StyleRun::Type::TABLE_DELIMITER] = plainFont;
+    fFonts[StyleRun::Type::TABLE_ROW_DELIMITER] = plainFont;
 
     // Default colors
     rgb_color black = {0, 0, 0, 255};
@@ -87,32 +93,42 @@ void MarkdownParser::InitializeDefaultStyles()
     rgb_color blue = {0, 102, 204, 255};
     rgb_color gray = {60, 60, 60, 255};
     rgb_color lightGray = {245, 245, 245, 255};
+    rgb_color borderGray = {180, 180, 180, 255};
+    rgb_color delimiterGray = {150, 150, 150, 255};
     rgb_color green = {0, 150, 0, 255};
     rgb_color purple = {128, 0, 128, 255};
     rgb_color teal = {0, 128, 128, 255};
     rgb_color orange = {255, 102, 0, 255};
 
-    fForegroundColors[StyleRun::NORMAL] = black;
-    fForegroundColors[StyleRun::CODE_INLINE] = gray;
-    fForegroundColors[StyleRun::CODE_BLOCK] = black;
-    fForegroundColors[StyleRun::LINK] = blue;
-    fForegroundColors[StyleRun::LIST_BULLET] = gray;
-    fForegroundColors[StyleRun::LIST_NUMBER] = gray;
-    fForegroundColors[StyleRun::TASK_MARKER_UNCHECKED] = gray;
-    fForegroundColors[StyleRun::TASK_MARKER_CHECKED] = green;
+    fForegroundColors[StyleRun::Type::NORMAL] = black;
+    fForegroundColors[StyleRun::Type::CODE_INLINE] = gray;
+    fForegroundColors[StyleRun::Type::CODE_BLOCK] = black;
+    fForegroundColors[StyleRun::Type::LINK] = blue;
+    fForegroundColors[StyleRun::Type::LIST_BULLET] = gray;
+    fForegroundColors[StyleRun::Type::LIST_NUMBER] = gray;
+    fForegroundColors[StyleRun::Type::TASK_MARKER_UNCHECKED] = gray;
+    fForegroundColors[StyleRun::Type::TASK_MARKER_CHECKED] = green;
+    fForegroundColors[StyleRun::Type::TABLE_HEADER] = black;
+    fForegroundColors[StyleRun::Type::TABLE_CELL] = black;
+    fForegroundColors[StyleRun::Type::TABLE_DELIMITER] = borderGray;
+    fForegroundColors[StyleRun::Type::TABLE_ROW_DELIMITER] = delimiterGray;
 
     // Syntax highlighting colors (matching SyntaxHighlighter defaults)
-    fForegroundColors[StyleRun::SYNTAX_KEYWORD] = blue;
-    fForegroundColors[StyleRun::SYNTAX_TYPE] = teal;
-    fForegroundColors[StyleRun::SYNTAX_FUNCTION] = purple;
-    fForegroundColors[StyleRun::SYNTAX_STRING] = green;
-    fForegroundColors[StyleRun::SYNTAX_NUMBER] = orange;
-    fForegroundColors[StyleRun::SYNTAX_COMMENT] = gray;
-    fForegroundColors[StyleRun::SYNTAX_OPERATOR] = black;
+    fForegroundColors[StyleRun::Type::SYNTAX_KEYWORD] = blue;
+    fForegroundColors[StyleRun::Type::SYNTAX_TYPE] = teal;
+    fForegroundColors[StyleRun::Type::SYNTAX_FUNCTION] = purple;
+    fForegroundColors[StyleRun::Type::SYNTAX_STRING] = green;
+    fForegroundColors[StyleRun::Type::SYNTAX_NUMBER] = orange;
+    fForegroundColors[StyleRun::Type::SYNTAX_COMMENT] = gray;
+    fForegroundColors[StyleRun::Type::SYNTAX_OPERATOR] = black;
 
-    fBackgroundColors[StyleRun::NORMAL] = white;
-    fBackgroundColors[StyleRun::CODE_INLINE] = lightGray;
-    fBackgroundColors[StyleRun::CODE_BLOCK] = lightGray;
+    fBackgroundColors[StyleRun::Type::NORMAL] = white;
+    fBackgroundColors[StyleRun::Type::CODE_INLINE] = lightGray;
+    fBackgroundColors[StyleRun::Type::CODE_BLOCK] = lightGray;
+    fBackgroundColors[StyleRun::Type::TABLE_HEADER] = white;
+    fBackgroundColors[StyleRun::Type::TABLE_CELL] = white;
+    fBackgroundColors[StyleRun::Type::TABLE_DELIMITER] = white;
+    fBackgroundColors[StyleRun::Type::TABLE_ROW_DELIMITER] = white;
 }
 
 bool MarkdownParser::Parse(const char* markdownText)
@@ -265,6 +281,14 @@ void MarkdownParser::ProcessNode(TSNode node, int depth)
         DebugPrintNode(node, depth);
     }
 
+    // Handle pipe characters (they're unnamed nodes)
+    if (strcmp(nodeType, "|") == 0) {
+        uint32_t startByte = ts_node_start_byte(node);
+        uint32_t endByte = ts_node_end_byte(node);
+        CreateStyleRun(startByte, endByte - startByte, StyleRun::Type::TABLE_DELIMITER);
+        return;
+    }
+
     // Only process named nodes for styling
     if (!ts_node_is_named(node)) {
         return;
@@ -277,20 +301,20 @@ void MarkdownParser::ProcessNode(TSNode node, int depth)
     // Handle task list markers specially
     if (strcmp(nodeType, "task_list_marker_unchecked") == 0) {
         if (fUseUnicodeSymbols) {
-            CreateStyleRun(startByte, length, StyleRun::TASK_MARKER_UNCHECKED,
+            CreateStyleRun(startByte, length, StyleRun::Type::TASK_MARKER_UNCHECKED,
                           "", "", UNICODE_CHECKBOX_UNCHECKED);
         } else {
-            CreateStyleRun(startByte, length, StyleRun::TASK_MARKER_UNCHECKED);
+            CreateStyleRun(startByte, length, StyleRun::Type::TASK_MARKER_UNCHECKED);
         }
         return; // Don't recurse into task markers
     }
 
     if (strcmp(nodeType, "task_list_marker_checked") == 0) {
         if (fUseUnicodeSymbols) {
-            CreateStyleRun(startByte, length, StyleRun::TASK_MARKER_CHECKED,
+            CreateStyleRun(startByte, length, StyleRun::Type::TASK_MARKER_CHECKED,
                           "", "", UNICODE_CHECKBOX_CHECKED);
         } else {
-            CreateStyleRun(startByte, length, StyleRun::TASK_MARKER_CHECKED);
+            CreateStyleRun(startByte, length, StyleRun::Type::TASK_MARKER_CHECKED);
         }
         return;
     }
@@ -300,30 +324,43 @@ void MarkdownParser::ProcessNode(TSNode node, int depth)
         strcmp(nodeType, "list_marker_plus") == 0 ||
         strcmp(nodeType, "list_marker_star") == 0) {
         if (fUseUnicodeSymbols) {
-            CreateStyleRun(startByte, length, StyleRun::LIST_BULLET,
+            CreateStyleRun(startByte, length, StyleRun::Type::LIST_BULLET,
                           "", "", UNICODE_BULLET);
         } else {
-            CreateStyleRun(startByte, length, StyleRun::LIST_BULLET);
+            CreateStyleRun(startByte, length, StyleRun::Type::LIST_BULLET);
         }
         return;
+    }
+
+    // Handle table delimiter row
+    if (strcmp(nodeType, "pipe_table_delimiter_row") == 0) {
+        // Style the entire delimiter row (|---|---|) separately from individual pipes
+        CreateStyleRun(startByte, length, StyleRun::Type::TABLE_ROW_DELIMITER);
+        return; // Don't recurse into delimiter row
     }
 
     // Determine style based on node type
     StyleRun::Type styleType = GetStyleTypeForNode(node);
 
-    if (styleType != StyleRun::NORMAL) {
+    if (fDebugEnabled && (strcmp(nodeType, "pipe_table_cell") == 0)) {
+        printf("  Cell [%u,%u) styleType=%d (%s)\n", startByte, endByte,
+               styleType, styleType == StyleRun::Type::TABLE_HEADER ? "TABLE_HEADER" :
+                         styleType == StyleRun::Type::TABLE_CELL ? "TABLE_CELL" : "OTHER");
+    }
+
+    if (styleType != StyleRun::Type::NORMAL) {
         // Extract additional info for special nodes
         BString language;
         BString url;
 
-        if (styleType == StyleRun::CODE_BLOCK) {
+        if (styleType == StyleRun::Type::CODE_BLOCK) {
             // Try to get language from info_string node
             TSNode infoNode = ts_node_child_by_field_name(node, "info_string", 11);
             if (!ts_node_is_null(infoNode)) {
                 language = GetNodeText(infoNode);
                 language.Trim();
             }
-        } else if (styleType == StyleRun::LINK) {
+        } else if (styleType == StyleRun::Type::LINK) {
             // Try to get URL from link_destination node
             TSNode destNode = ts_node_child_by_field_name(node, "link_destination", 16);
             if (!ts_node_is_null(destNode)) {
@@ -334,16 +371,31 @@ void MarkdownParser::ProcessNode(TSNode node, int depth)
         CreateStyleRun(startByte, length, styleType, language, url);
 
         // Special handling for code blocks with syntax highlighting
-        if (styleType == StyleRun::CODE_BLOCK && fSyntaxHighlighter && !language.IsEmpty()) {
+        if (styleType == StyleRun::Type::CODE_BLOCK && fSyntaxHighlighter && !language.IsEmpty()) {
             const char* code = fSourceText + startByte;
             ApplySyntaxHighlighting(startByte, length, code, language.String());
         }
     }
 
     // Special handling for inline content (paragraph, heading_content, etc.)
+    // BUT NOT for table cells - they need special handling to preserve table styling
     if (strcmp(nodeType, "inline") == 0 || strcmp(nodeType, "paragraph") == 0) {
         // Parse inline markdown within this node
         ProcessInlineContent(node);
+    } else if (strcmp(nodeType, "pipe_table_cell") == 0) {
+        // For table cells, process inline content but the cell itself already has styling
+        // We process children manually to handle inline formatting within cells
+        uint32_t childCount = ts_node_child_count(node);
+        for (uint32_t i = 0; i < childCount; i++) {
+            TSNode child = ts_node_child(node, i);
+            const char* childType = ts_node_type(child);
+
+            // Only process inline nodes within cells
+            if (strcmp(childType, "inline") == 0) {
+                ProcessInlineContent(child);
+            }
+        }
+        return; // Don't recurse further, we handled children manually
     }
 
     // Recursively process children
@@ -389,19 +441,19 @@ void MarkdownParser::ProcessInlineNode(TSNode node, int32 baseOffset)
     int32 absoluteOffset = baseOffset + startByte;
 
     // Detect inline formatting
-    StyleRun::Type styleType = StyleRun::NORMAL;
+    StyleRun::Type styleType = StyleRun::Type::NORMAL;
 
     if (strcmp(nodeType, "strong_emphasis") == 0) {
-        styleType = StyleRun::STRONG;
+        styleType = StyleRun::Type::STRONG;
     } else if (strcmp(nodeType, "emphasis") == 0) {
-        styleType = StyleRun::EMPHASIS;
+        styleType = StyleRun::Type::EMPHASIS;
     } else if (strcmp(nodeType, "code_span") == 0) {
-        styleType = StyleRun::CODE_INLINE;
+        styleType = StyleRun::Type::CODE_INLINE;
     } else if (strcmp(nodeType, "inline_link") == 0 || strcmp(nodeType, "shortcut_link") == 0) {
-        styleType = StyleRun::LINK;
+        styleType = StyleRun::Type::LINK;
     }
 
-    if (styleType != StyleRun::NORMAL) {
+    if (styleType != StyleRun::Type::NORMAL) {
         CreateStyleRun(absoluteOffset, length, styleType);
     }
 
@@ -420,38 +472,51 @@ StyleRun::Type MarkdownParser::GetStyleTypeForNode(TSNode node) const
     // Headings
     if (strcmp(type, "atx_heading") == 0) {
         int level = GetHeadingLevel(node);
-        return (StyleRun::Type)(StyleRun::HEADING_1 + level - 1);
+        return (StyleRun::Type)(StyleRun::Type::HEADING_1 + level - 1);
     }
 
     // Code
     if (strcmp(type, "fenced_code_block") == 0 || strcmp(type, "indented_code_block") == 0) {
-        return StyleRun::CODE_BLOCK;
+        return StyleRun::Type::CODE_BLOCK;
     }
     if (strcmp(type, "code_span") == 0) {
-        return StyleRun::CODE_INLINE;
+        return StyleRun::Type::CODE_INLINE;
     }
 
     // Emphasis
     if (strcmp(type, "emphasis") == 0) {
-        return StyleRun::EMPHASIS;
+        return StyleRun::Type::EMPHASIS;
     }
     if (strcmp(type, "strong_emphasis") == 0) {
-        return StyleRun::STRONG;
+        return StyleRun::Type::STRONG;
     }
 
     // Links
     if (strcmp(type, "inline_link") == 0 || strcmp(type, "shortcut_link") == 0) {
-        return StyleRun::LINK;
+        return StyleRun::Type::LINK;
     }
 
     // Blockquote
     if (strcmp(type, "block_quote") == 0) {
-        return StyleRun::BLOCKQUOTE;
+        return StyleRun::Type::BLOCKQUOTE;
+    }
+
+    // Tables - only style cells and delimiters, not container nodes
+    // The pipe_table_header and pipe_table_row are just grouping containers
+    // and should return NORMAL to avoid creating overlapping style runs
+    if (strcmp(type, "pipe_table_cell") == 0) {
+        // Check if this cell is in a header row by looking at parent
+        TSNode parent = ts_node_parent(node);
+        const char* parentType = ts_node_type(parent);
+        if (strcmp(parentType, "pipe_table_header") == 0) {
+            return StyleRun::Type::TABLE_HEADER;
+        }
+        return StyleRun::Type::TABLE_CELL;
     }
 
     // List markers handled in ProcessNode
 
-    return StyleRun::NORMAL;
+    return StyleRun::Type::NORMAL;
 }
 
 int MarkdownParser::GetHeadingLevel(TSNode node) const
@@ -545,12 +610,13 @@ void MarkdownParser::BuildOutline()
         if (strcmp(nodeType, "atx_heading") == 0) {
             int level = GetHeadingLevel(node);
 
-            // Extract heading text from heading_content child
+            // Extract heading text from inline child
             BString text;
             uint32_t childCount = ts_node_child_count(node);
             for (uint32_t i = 0; i < childCount; i++) {
                 TSNode child = ts_node_child(node, i);
-                if (strcmp(ts_node_type(child), "heading_content") == 0) {
+                const char* childType = ts_node_type(child);
+                if (strcmp(childType, "inline") == 0) {
                     text = GetNodeText(child);
                     text.Trim();
                     break;
@@ -655,25 +721,25 @@ void MarkdownParser::ApplySyntaxHighlighting(int32 codeOffset, int32 codeLength,
         StyleRun::Type styleType;
         switch (token.type) {
             case SyntaxToken::KEYWORD:
-                styleType = StyleRun::SYNTAX_KEYWORD;
+                styleType = StyleRun::Type::SYNTAX_KEYWORD;
                 break;
             case SyntaxToken::TYPE:
-                styleType = StyleRun::SYNTAX_TYPE;
+                styleType = StyleRun::Type::SYNTAX_TYPE;
                 break;
             case SyntaxToken::FUNCTION:
-                styleType = StyleRun::SYNTAX_FUNCTION;
+                styleType = StyleRun::Type::SYNTAX_FUNCTION;
                 break;
             case SyntaxToken::STRING:
-                styleType = StyleRun::SYNTAX_STRING;
+                styleType = StyleRun::Type::SYNTAX_STRING;
                 break;
             case SyntaxToken::NUMBER:
-                styleType = StyleRun::SYNTAX_NUMBER;
+                styleType = StyleRun::Type::SYNTAX_NUMBER;
                 break;
             case SyntaxToken::COMMENT:
-                styleType = StyleRun::SYNTAX_COMMENT;
+                styleType = StyleRun::Type::SYNTAX_COMMENT;
                 break;
             case SyntaxToken::OPERATOR:
-                styleType = StyleRun::SYNTAX_OPERATOR;
+                styleType = StyleRun::Type::SYNTAX_OPERATOR;
                 break;
             default:
                 continue; // Skip NORMAL tokens
@@ -736,9 +802,12 @@ void MarkdownParser::DumpStyleRuns() const
 
     const char* typeNames[] = {
         "NORMAL", "HEADING_1", "HEADING_2", "HEADING_3", "HEADING_4", "HEADING_5", "HEADING_6",
-        "CODE_INLINE", "CODE_BLOCK", "EMPHASIS", "STRONG", "LINK", "LINK_URL",
-        "LIST_BULLET", "LIST_NUMBER", "BLOCKQUOTE",
-        "TASK_UNCHECKED", "TASK_CHECKED"
+        "CODE_INLINE", "CODE_BLOCK", "EMPHASIS", "STRONG", "UNDERLINE", "STRIKETHROUGH",
+        "LINK", "LINK_URL", "LIST_BULLET", "LIST_NUMBER", "BLOCKQUOTE",
+        "TASK_UNCHECKED", "TASK_CHECKED",
+        "TABLE_HEADER", "TABLE_CELL", "TABLE_DELIMITER", "TABLE_ROW_DELIMITER",
+        "SYNTAX_KEYWORD", "SYNTAX_TYPE", "SYNTAX_FUNCTION",
+        "SYNTAX_STRING", "SYNTAX_NUMBER", "SYNTAX_COMMENT", "SYNTAX_OPERATOR"
     };
 
     for (size_t i = 0; i < fStyleRuns.size(); i++) {

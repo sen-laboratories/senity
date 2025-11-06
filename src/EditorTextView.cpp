@@ -8,6 +8,7 @@
 #include "StyleRun.h"
 
 #include <iostream>
+#include <vector>
 #include <Clipboard.h>
 #include <File.h>
 #include <MenuItem.h>
@@ -34,7 +35,11 @@ static const struct {
     {StyleRun::Type::LIST_NUMBER, {128, 128, 128, 255}}, // gray
     {StyleRun::Type::TASK_MARKER_UNCHECKED, {128, 128, 128, 255}}, // gray
     {StyleRun::Type::TASK_MARKER_CHECKED, {0, 150, 0, 255}},        // green
-    {StyleRun::Type::HEADING_1, {0, 102, 204, 255}},    // blue (bold via font)
+    {StyleRun::Type::TABLE_HEADER, {0, 0, 0, 255}},                  // black (bold via font)
+    {StyleRun::Type::TABLE_CELL, {0, 0, 0, 255}},                    // black
+    {StyleRun::Type::TABLE_DELIMITER, {180, 180, 180, 255}},         // light gray (pipes)
+    {StyleRun::Type::TABLE_ROW_DELIMITER, {150, 150, 150, 255}},     // medium gray (---|---)
+    {StyleRun::Type::HEADING_1, {0, 102, 204, 255}},                 // blue (bold via font)
     {StyleRun::Type::HEADING_2, {0, 102, 204, 255}},    // blue
     {StyleRun::Type::HEADING_3, {0, 102, 204, 255}},    // blue
     {StyleRun::Type::HEADING_4, {0, 102, 204, 255}},    // blue
@@ -69,10 +74,11 @@ struct NodeHighlightData {
 };
 
 EditorTextView::EditorTextView(StatusBar *statusView, BHandler *editorHandler)
-    : BTextView("EditorTextView", B_WILL_DRAW | B_FRAME_EVENTS)
+    : BTextView("EditorTextView", B_WILL_DRAW | B_FRAME_EVENTS | B_PULSE_NEEDED)
     , fEditorHandler(editorHandler)
     , fStatusBar(statusView)
     , fTextHighlights(new std::map<int32, text_highlight*>())
+    , fOldOffset(0)
 {
     // Initialize parser
     fMarkdownParser = new MarkdownParser();
@@ -97,6 +103,20 @@ EditorTextView::EditorTextView(StatusBar *statusView, BHandler *editorHandler)
     fMarkdownParser->SetColor(StyleRun::Type::LINK, GetColorForType(StyleRun::Type::LINK));
     fMarkdownParser->SetColor(StyleRun::Type::CODE_INLINE, GetColorForType(StyleRun::Type::CODE_INLINE));
     fMarkdownParser->SetColor(StyleRun::Type::CODE_BLOCK, GetColorForType(StyleRun::Type::CODE_BLOCK));
+
+    // Table styling - headers should be bold, all table text use fixed font
+    fTableFont = new BFont(be_fixed_font);
+    fTableHeaderFont = new BFont(be_fixed_font);
+    fTableHeaderFont->SetFace(B_BOLD_FACE);
+
+    fMarkdownParser->SetFont(StyleRun::Type::TABLE_HEADER, *fTableHeaderFont);
+    fMarkdownParser->SetFont(StyleRun::Type::TABLE_CELL, *fTableFont);
+    fMarkdownParser->SetFont(StyleRun::Type::TABLE_DELIMITER, *fTableFont);
+    fMarkdownParser->SetFont(StyleRun::Type::TABLE_ROW_DELIMITER, *fTableFont);
+    fMarkdownParser->SetColor(StyleRun::Type::TABLE_HEADER, GetColorForType(StyleRun::Type::TABLE_HEADER));
+    fMarkdownParser->SetColor(StyleRun::Type::TABLE_CELL, GetColorForType(StyleRun::Type::TABLE_CELL));
+    fMarkdownParser->SetColor(StyleRun::Type::TABLE_DELIMITER, GetColorForType(StyleRun::Type::TABLE_DELIMITER));
+    fMarkdownParser->SetColor(StyleRun::Type::TABLE_ROW_DELIMITER, GetColorForType(StyleRun::Type::TABLE_ROW_DELIMITER));
 
     // Heading fonts
     for (int i = 0; i < 6; i++) {
@@ -133,6 +153,7 @@ EditorTextView::~EditorTextView()
 
 void EditorTextView::AttachedToWindow()
 {
+    BTextView::AttachedToWindow();
     BTextView::MakeFocus(true);
 }
 
@@ -146,50 +167,50 @@ void EditorTextView::Draw(BRect updateRect)
         int32 startOffset = OffsetAt(updateRect.LeftTop());
         int32 endOffset = OffsetAt(updateRect.RightBottom());
         if (endOffset < startOffset) endOffset = TextLength();
-        
+
         std::vector<StyleRun> runs = fMarkdownParser->GetStyleRunsInRange(startOffset, endOffset);
-        
+
         for (const StyleRun& run : runs) {
             // Only process runs with replacement text
             if (run.text.IsEmpty()) {
                 continue;
             }
-            
+
             // Get the actual text in document
             char* buffer = new char[run.length + 1];
             GetText(run.offset, run.length, buffer);
             buffer[run.length] = '\0';
-            
+
             // Only draw if different from replacement
             if (strcmp(buffer, run.text.String()) != 0) {
                 // Get position (top of line) and height
                 float height;
                 BPoint topPoint = PointAt(run.offset, &height);
-                
+
                 // Calculate width of text to cover
                 float textWidth = run.font.StringWidth(buffer);
-                
+
                 // Create rect covering the ASCII text
                 BRect coverRect(topPoint.x, topPoint.y,
                                topPoint.x + textWidth, topPoint.y + height);
-                
+
                 // Cover ASCII with background
                 rgb_color viewColor = ViewColor();
                 SetHighColor(viewColor);
                 FillRect(coverRect);
-                
+
                 // DrawString needs baseline position, not top
                 // Get font metrics to calculate baseline
                 font_height fh;
                 run.font.GetHeight(&fh);
                 BPoint baseline(topPoint.x, topPoint.y + fh.ascent);
-                
+
                 // Draw Unicode symbol at baseline
                 SetHighColor(run.foreground);
                 SetFont(&run.font);
                 DrawString(run.text.String(), baseline);
             }
-            
+
             delete[] buffer;
         }
     }
@@ -426,10 +447,9 @@ void EditorTextView::MouseDown(BPoint where)
     Window()->CurrentMessage()->FindInt32("buttons", (int32*)&buttons);
 
     if (buttons & B_SECONDARY_MOUSE_BUTTON) {
-        // Right-click: build and show context menu
         int32 start, end;
         GetSelection(&start, &end);
-
+        // Right-click: build and show context menu
         if (start != end) {
             BuildContextSelectionMenu();
         } else {
@@ -437,6 +457,90 @@ void EditorTextView::MouseDown(BPoint where)
         }
     } else {
         BTextView::MouseDown(where);
+    }
+}
+
+void EditorTextView::Pulse()
+{
+    BTextView::Pulse();
+
+    // Get current cursor position (use end of selection as cursor)
+    int32 start, end;
+    GetSelection(&start, &end);
+    int32 currentOffset = end;
+
+    // Only update if cursor moved
+    if (currentOffset == fOldOffset) {
+        return;
+    }
+    fOldOffset = currentOffset;
+
+    // Get full document outline
+    BMessage* fullOutline = fMarkdownParser->GetOutline();
+    if (!fullOutline) {
+        return;
+    }
+
+    // Get count of headings
+    type_code type;
+    int32 count = 0;
+    if (fullOutline->GetInfo("heading", &type, &count) != B_OK || count == 0) {
+        fStatusBar->UpdateOutline(nullptr);
+        return;
+    }
+
+    // Find all headings that contain current offset
+    // Build breadcrumb trail showing hierarchy
+    BMessage contextOutline;
+    contextOutline.AddString("type", "outline");
+
+    std::vector<BMessage> headingStack;
+
+    for (int32 i = 0; i < count; i++) {
+        BMessage heading;
+        if (fullOutline->FindMessage("heading", i, &heading) != B_OK) {
+            continue;
+        }
+
+        int32 headingOffset = 0;
+        int32 headingLevel = 0;
+        const char* text = nullptr;
+
+        heading.FindInt32("offset", &headingOffset);
+        heading.FindInt32("level", &headingLevel);
+        heading.FindString("text", &text);
+
+        // Check if this heading is before current position
+        if (headingOffset <= currentOffset) {
+            // Remove headings at same or deeper level from stack
+            while (!headingStack.empty()) {
+                int32 stackLevel = 0;
+                headingStack.back().FindInt32("level", &stackLevel);
+                if (stackLevel >= headingLevel) {
+                    headingStack.pop_back();
+                } else {
+                    break;
+                }
+            }
+
+            // Add this heading to stack
+            headingStack.push_back(heading);
+        } else {
+            // Past current offset, stop searching
+            break;
+        }
+    }
+
+    // Build context outline from stack
+    for (const BMessage& heading : headingStack) {
+        contextOutline.AddMessage("heading", &heading);
+    }
+
+    // Update status bar with context outline
+    if (!headingStack.empty()) {
+        fStatusBar->UpdateOutline(&contextOutline);
+    } else {
+        fStatusBar->UpdateOutline(nullptr);
     }
 }
 
@@ -545,18 +649,31 @@ void EditorTextView::ApplyStyles(int32 offset, int32 length)
             font.SetFace(font.Face() | B_STRIKEOUT_FACE);
         }
 
+        // Table headers should be bold
+        if (run.type == StyleRun::Type::TABLE_HEADER) {
+            font.SetFace(font.Face() | B_BOLD_FACE);
+        }
+
         // Apply font and color styling
         SetFontAndColor(start, end, &font, B_FONT_ALL, &run.foreground);
     }
-    
+
     // Invalidate to trigger Draw() for Unicode symbol rendering
     Invalidate();
 
-    // Notify editor handler about outline update
+    // Update StatusBar and notify editor handler about outline update
     BMessage* outline = fMarkdownParser->GetOutline();
-    if (fEditorHandler && outline) {
-        BMessage outlineCopy(*outline);
-        BMessenger(fEditorHandler).SendMessage(&outlineCopy);
+    if (outline) {
+        // Update StatusBar directly
+        if (fStatusBar) {
+            fStatusBar->UpdateOutline(outline);
+        }
+
+        // Also notify editor handler (e.g., for window title update)
+        if (fEditorHandler) {
+            BMessage outlineCopy(*outline);
+            BMessenger(fEditorHandler).SendMessage(&outlineCopy);
+        }
     }
 }
 
@@ -625,28 +742,29 @@ void EditorTextView::ClearHighlights()
     Invalidate();
 }
 
-BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames)
+bool EditorTextView::GetOutlineAt(int32 offset, BMessage* outline, bool withNames)
 {
-    BMessage* msg = new BMessage('OUTL');
-
     if (!fMarkdownParser) {
-        return msg;
+        return false;
     }
 
     TSNode node = fMarkdownParser->GetNodeAtOffset(offset);
     if (ts_node_is_null(node)) {
-        return msg;
+        return false;
     }
 
     // Check if this is a heading node
     const char* nodeType = ts_node_type(node);
     if (strcmp(nodeType, "atx_heading") != 0) {
-        return msg;
+        return false;
     }
+
+    outline->what = 'OUTL';
 
     // Get heading level
     int level = 1;
     uint32_t childCount = ts_node_child_count(node);
+
     for (uint32_t i = 0; i < childCount; i++) {
         TSNode child = ts_node_child(node, i);
         const char* childType = ts_node_type(child);
@@ -661,16 +779,16 @@ BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames)
     int32 line = fMarkdownParser->GetLineForOffset(offset);
 
     // Build message
-    msg->AddInt32("level", level);
-    msg->AddInt32("line", line);
-    msg->AddInt32("offset", offset);
+    outline->AddInt32("level",  level);
+    outline->AddInt32("line",   line);
+    outline->AddInt32("offset", offset);
 
     // Extract heading text if requested
     if (withNames) {
         BString headingText;
         for (uint32_t i = 0; i < childCount; i++) {
             TSNode child = ts_node_child(node, i);
-            if (strcmp(ts_node_type(child), "heading_content") == 0) {
+            if (strcmp(ts_node_type(child), "inline") == 0) {
                 uint32_t start = ts_node_start_byte(child);
                 uint32_t end = ts_node_end_byte(child);
                 const char* source = Text();
@@ -681,11 +799,13 @@ BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames)
         }
 
         if (headingText.Length() > 0) {
-            msg->AddString("text", headingText);
+            outline->AddString("text", headingText);
         }
     }
 
-    return msg;
+    outline->PrintToStream();
+
+    return true;
 }
 
 BMessage* EditorTextView::GetDocumentOutline(bool withNames, bool withDetails)

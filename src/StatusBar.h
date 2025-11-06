@@ -19,7 +19,7 @@ public:
     virtual      ~StatusBar();
     void          UpdatePosition(int32 offset, int32 line, int32 column);
     void          UpdateSelection(int32 selectionStart, int32 selectionEnd);
-    void          UpdateOutline(const BMessage* outlineItems);
+    void          UpdateOutline(const BMessage* outline);
 
 private:
     BTextControl *fLine;
