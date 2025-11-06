@@ -582,10 +582,68 @@ void MarkdownParser::CreateStyleRun(int32 offset, int32 length, StyleRun::Type t
     fStyleRuns.push_back(run);
 }
 
+void MarkdownParser::ProcessNodeForOutline(TSNode node, int32 parentOffset)
+{
+    const char* nodeType = ts_node_type(node);
+
+    // Check if this is a heading
+    if (strcmp(nodeType, "atx_heading") == 0) {
+        int level = GetHeadingLevel(node);
+        int32 currentOffset = ts_node_start_byte(node);
+
+        // Extract heading text using field name (heading_content)
+        BString text;
+        TSNode contentNode = ts_node_child_by_field_name(node, "heading_content", 15);
+        if (!ts_node_is_null(contentNode)) {
+            // Got it via field name
+            printf("  found inline child via field name!\n");
+            text = GetNodeText(contentNode);
+            text.Trim();
+        } else {
+            // Fallback: look for inline child
+            printf("  NO inline child via field name, fall back to children loop!\n");
+            uint32_t namedChildCount = ts_node_named_child_count(node);
+            for (uint32_t i = 0; i < namedChildCount; i++) {
+                TSNode child = ts_node_named_child(node, i);
+                const char* childType = ts_node_type(child);
+                if (strcmp(childType, "inline") == 0) {
+                    text = GetNodeText(child);
+                    text.Trim();
+                    break;
+                }
+            }
+        }
+
+        if (fDebugEnabled) {
+            printf("Found heading L%d at %u: '%s' (parent: %d)\n", level,
+                   currentOffset, text.String(), parentOffset);
+        }
+
+        BMessage heading;
+        heading.AddString("text", text);
+        heading.AddInt32("level", level);
+        heading.AddInt32("offset", currentOffset);
+        heading.AddInt32("length", ts_node_end_byte(node) - ts_node_start_byte(node));
+        heading.AddInt32("parent_offset", parentOffset);
+
+        fOutline.AddMessage("heading", &heading);
+
+        // This heading becomes parent for its descendants
+        parentOffset = currentOffset;
+    }
+
+    // Recurse into all children, passing current parent
+    uint32_t childCount = ts_node_child_count(node);
+    for (uint32_t i = 0; i < childCount; i++) {
+        ProcessNodeForOutline(ts_node_child(node, i), parentOffset);
+    }
+}
+
 void MarkdownParser::BuildOutline()
 {
     fOutline.MakeEmpty();
-    fOutline.AddString("type", "outline");
+    fOutline.what = 'OUTL';  // Use 'what' field as requested
+    fOutline.AddString("type", "document");  // Type field for flavor
 
     if (!fTree) {
         if (fDebugEnabled) {
@@ -596,50 +654,25 @@ void MarkdownParser::BuildOutline()
 
     if (fDebugEnabled) {
         printf("\n=== Building Outline ===\n");
+
+        // Debug: Show what field names are actually defined in the grammar
+        const TSLanguage* lang = ts_parser_language(fParser);
+        uint32_t fieldCount = ts_language_field_count(lang);
+        if (fieldCount > 0) {
+            printf("Grammar defines %u field names:\n", fieldCount);
+            for (uint32_t i = 1; i <= fieldCount; i++) {  // Field IDs start at 1
+                const char* fieldName = ts_language_field_name_for_id(lang, i);
+                if (fieldName) {
+                    printf("  Field %u: %s\n", i, fieldName);
+                }
+            }
+        } else {
+            printf("Grammar defines no field names (will use node type matching)\n");
+        }
     }
 
     TSNode root = ts_tree_root_node(fTree);
-
-    // Traverse tree looking for headings
-    TSTreeCursor cursor = ts_tree_cursor_new(root);
-
-    do {
-        TSNode node = ts_tree_cursor_current_node(&cursor);
-        const char* nodeType = ts_node_type(node);
-
-        if (strcmp(nodeType, "atx_heading") == 0) {
-            int level = GetHeadingLevel(node);
-
-            // Extract heading text from inline child
-            BString text;
-            uint32_t childCount = ts_node_child_count(node);
-            for (uint32_t i = 0; i < childCount; i++) {
-                TSNode child = ts_node_child(node, i);
-                const char* childType = ts_node_type(child);
-                if (strcmp(childType, "inline") == 0) {
-                    text = GetNodeText(child);
-                    text.Trim();
-                    break;
-                }
-            }
-
-            if (fDebugEnabled) {
-                printf("Found heading L%d at %u: '%s'\n", level,
-                       ts_node_start_byte(node), text.String());
-            }
-
-            BMessage heading;
-            heading.AddString("text", text);
-            heading.AddInt32("level", level);
-            heading.AddInt32("offset", ts_node_start_byte(node));
-            heading.AddInt32("length", ts_node_end_byte(node) - ts_node_start_byte(node));
-
-            fOutline.AddMessage("heading", &heading);
-        }
-    } while (ts_tree_cursor_goto_next_sibling(&cursor) ||
-             ts_tree_cursor_goto_first_child(&cursor));
-
-    ts_tree_cursor_delete(&cursor);
+    ProcessNodeForOutline(root, -1);  // Start with no parent (-1)
 }
 
 TSNode MarkdownParser::GetNodeAtOffset(int32 offset) const
@@ -672,6 +705,271 @@ int32 MarkdownParser::GetLineForOffset(int32 offset) const
     }
 
     return line;
+}
+
+// Fast outline query methods using TreeSitter API directly
+
+TSNode MarkdownParser::GetHeadingAtOffset(int32 offset) const
+{
+    if (!fTree) {
+        return ts_null_node;
+    }
+
+    TSNode node = GetNodeAtOffset(offset);
+    
+    // Walk up tree to find heading node
+    while (!ts_node_is_null(node)) {
+        const char* nodeType = ts_node_type(node);
+        if (strcmp(nodeType, "atx_heading") == 0) {
+            return node;
+        }
+        node = ts_node_parent(node);
+    }
+    
+    return ts_null_node;
+}
+
+std::vector<TSNode> MarkdownParser::FindAllHeadings() const
+{
+    std::vector<TSNode> headings;
+    
+    if (!fTree) {
+        return headings;
+    }
+    
+    TSNode root = ts_tree_root_node(fTree);
+    
+    // Use tree-sitter's cursor for efficient traversal
+    TSTreeCursor cursor = ts_tree_cursor_new(root);
+    
+    bool descend = true;
+    while (true) {
+        if (descend) {
+            TSNode node = ts_tree_cursor_current_node(&cursor);
+            const char* nodeType = ts_node_type(node);
+            
+            if (strcmp(nodeType, "atx_heading") == 0) {
+                headings.push_back(node);
+            }
+            
+            // Try to go to first child
+            if (ts_tree_cursor_goto_first_child(&cursor)) {
+                descend = true;
+                continue;
+            }
+        }
+        
+        // Try to go to next sibling
+        if (ts_tree_cursor_goto_next_sibling(&cursor)) {
+            descend = true;
+            continue;
+        }
+        
+        // Go up and try next sibling
+        if (!ts_tree_cursor_goto_parent(&cursor)) {
+            break;
+        }
+        descend = false;
+    }
+    
+    ts_tree_cursor_delete(&cursor);
+    return headings;
+}
+
+TSNode MarkdownParser::FindParentHeading(int32 offset) const
+{
+    if (!fTree) {
+        return ts_null_node;
+    }
+    
+    // Get all headings
+    std::vector<TSNode> headings = FindAllHeadings();
+    
+    // Find the current heading at offset (if any)
+    TSNode currentHeading = GetHeadingAtOffset(offset);
+    int32 currentLevel = ts_node_is_null(currentHeading) 
+        ? 999 
+        : GetHeadingLevelFromNode(currentHeading);
+    int32 currentOffset = ts_node_is_null(currentHeading)
+        ? offset
+        : ts_node_start_byte(currentHeading);
+    
+    // Walk backwards to find parent (heading with lower level before current)
+    for (auto it = headings.rbegin(); it != headings.rend(); ++it) {
+        TSNode heading = *it;
+        int32 headingOffset = ts_node_start_byte(heading);
+        
+        // Must be before current position
+        if (headingOffset >= currentOffset) {
+            continue;
+        }
+        
+        int32 level = GetHeadingLevelFromNode(heading);
+        if (level < currentLevel) {
+            return heading;
+        }
+    }
+    
+    return ts_null_node;
+}
+
+std::vector<TSNode> MarkdownParser::FindSiblingHeadings(TSNode heading) const
+{
+    std::vector<TSNode> siblings;
+    
+    if (!fTree || ts_node_is_null(heading)) {
+        return siblings;
+    }
+    
+    int32 targetLevel = GetHeadingLevelFromNode(heading);
+    int32 headingOffset = ts_node_start_byte(heading);
+    
+    // Get all headings
+    std::vector<TSNode> allHeadings = FindAllHeadings();
+    
+    // Find parent heading
+    TSNode parent = FindParentHeading(headingOffset);
+    int32 parentOffset = ts_node_is_null(parent) 
+        ? -1 
+        : ts_node_start_byte(parent);
+    
+    // Find next heading at parent level or higher (defines scope)
+    int32 endOffset = INT32_MAX;
+    if (parentOffset >= 0) {
+        int32 parentLevel = GetHeadingLevelFromNode(parent);
+        for (const TSNode& node : allHeadings) {
+            int32 nodeOffset = ts_node_start_byte(node);
+            if (nodeOffset > headingOffset) {
+                int32 level = GetHeadingLevelFromNode(node);
+                if (level <= parentLevel) {
+                    endOffset = nodeOffset;
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Collect siblings (same level, same parent)
+    for (const TSNode& node : allHeadings) {
+        int32 nodeOffset = ts_node_start_byte(node);
+        
+        // Must be after parent and before next parent-level heading
+        if (nodeOffset > parentOffset && nodeOffset < endOffset) {
+            int32 level = GetHeadingLevelFromNode(node);
+            if (level == targetLevel) {
+                siblings.push_back(node);
+            }
+        }
+    }
+    
+    return siblings;
+}
+
+void MarkdownParser::GetHeadingContext(int32 offset, BMessage* context) const
+{
+    if (!context || !fTree) {
+        return;
+    }
+    
+    context->MakeEmpty();
+    context->what = 'OUTL';
+    context->AddString("type", "context");
+    
+    // Get all headings
+    std::vector<TSNode> allHeadings = FindAllHeadings();
+    
+    // Build context stack (breadcrumb trail)
+    std::vector<TSNode> contextStack;
+    
+    for (const TSNode& heading : allHeadings) {
+        int32 headingOffset = ts_node_start_byte(heading);
+        
+        // Only consider headings before current offset
+        if (headingOffset > offset) {
+            break;
+        }
+        
+        int32 level = GetHeadingLevelFromNode(heading);
+        
+        // Remove headings at same or deeper level from stack
+        while (!contextStack.empty()) {
+            int32 stackLevel = GetHeadingLevelFromNode(contextStack.back());
+            if (stackLevel >= level) {
+                contextStack.pop_back();
+            } else {
+                break;
+            }
+        }
+        
+        // Add this heading to stack
+        contextStack.push_back(heading);
+    }
+    
+    // Build context message from stack
+    for (const TSNode& heading : contextStack) {
+        BMessage headingMsg;
+        ExtractHeadingInfo(heading, &headingMsg, true);
+        context->AddMessage("heading", &headingMsg);
+    }
+}
+
+void MarkdownParser::ExtractHeadingInfo(TSNode node, BMessage* msg, bool withText) const
+{
+    if (!msg || ts_node_is_null(node)) {
+        return;
+    }
+    
+    int32 level = GetHeadingLevelFromNode(node);
+    int32 offset = ts_node_start_byte(node);
+    int32 length = ts_node_end_byte(node) - offset;
+    
+    msg->AddInt32("level", level);
+    msg->AddInt32("offset", offset);
+    msg->AddInt32("length", length);
+    msg->AddInt32("line", GetLineForOffset(offset));
+    
+    if (withText) {
+        // Extract heading text
+        TSNode contentNode = ts_node_child_by_field_name(node, "heading_content", 15);
+        if (!ts_node_is_null(contentNode)) {
+            BString text = GetNodeText(contentNode);
+            text.Trim();
+            msg->AddString("text", text);
+        } else {
+            // Fallback: look for inline child
+            uint32_t childCount = ts_node_named_child_count(node);
+            for (uint32_t i = 0; i < childCount; i++) {
+                TSNode child = ts_node_named_child(node, i);
+                if (strcmp(ts_node_type(child), "inline") == 0) {
+                    BString text = GetNodeText(child);
+                    text.Trim();
+                    msg->AddString("text", text);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+int MarkdownParser::GetHeadingLevelFromNode(TSNode node) const
+{
+    if (ts_node_is_null(node)) {
+        return 0;
+    }
+    
+    // Look for atx_h1..atx_h6 child
+    uint32_t childCount = ts_node_child_count(node);
+    for (uint32_t i = 0; i < childCount; i++) {
+        TSNode child = ts_node_child(node, i);
+        const char* childType = ts_node_type(child);
+        
+        if (strncmp(childType, "atx_h", 5) == 0 && 
+            childType[5] >= '1' && childType[5] <= '6') {
+            return childType[5] - '0';
+        }
+    }
+    
+    return 1;  // Default to level 1
 }
 
 std::vector<StyleRun> MarkdownParser::GetStyleRunsInRange(int32 startOffset, int32 endOffset) const
@@ -847,33 +1145,7 @@ void MarkdownParser::DumpStyleRuns() const
 void MarkdownParser::DumpOutline() const
 {
     printf("\n=== Outline ===\n");
-
-    int32 count = 0;
-    if (fOutline.GetInfo("heading", NULL, &count) != B_OK) {
-        printf("No headings in outline\n");
-        return;
-    }
-
-    printf("Found %d headings:\n", count);
-
-    for (int32 i = 0; i < count; i++) {
-        BMessage heading;
-        if (fOutline.FindMessage("heading", i, &heading) == B_OK) {
-            BString text;
-            int32 level = 0;
-            int32 offset = 0;
-
-            heading.FindString("text", &text);
-            heading.FindInt32("level", &level);
-            heading.FindInt32("offset", &offset);
-
-            // Indent based on level
-            for (int j = 1; j < level; j++) {
-                printf("  ");
-            }
-            printf("L%d [%d]: %s\n", level, offset, text.String());
-        }
-    }
+    fOutline.PrintToStream();
 }
 
 const char* MarkdownParser::GetListBulletSymbol() const

@@ -9,15 +9,34 @@
 #include "StatusBar.h"
 
 StatusBar::StatusBar() : BView("status_bar", 0) {
+    float width  = be_plain_font->StringWidth("55555") + 14.0;
+    float height = be_plain_font->Size() + 12.0;
+    float offset = be_plain_font->StringWidth("5555555") + 14.0;
+    float select = be_plain_font->StringWidth("5555555 - 5555555 (555555555 chars)") + 14.0;
+
+    float labelWidth = be_plain_font->StringWidth("line ");
     fLine = new BTextControl("line", "-", new BMessage('line'));
+    fLine->SetExplicitMinSize(BSize(width + labelWidth, height));
+    fLine->SetExplicitMaxSize(BSize(width + labelWidth, height));
+
+    labelWidth = be_plain_font->StringWidth("column ");
     fColumn = new BTextControl("column", "-", new BMessage('clmn'));
+    fColumn->SetExplicitMinSize(BSize(width + labelWidth, height));
+    fColumn->SetExplicitMaxSize(BSize(width + labelWidth, height));
+
+    labelWidth = be_plain_font->StringWidth("offset ");
     fOffset = new BTextControl("offset", "-", new BMessage('offs'));
+    fOffset->SetExplicitMinSize(BSize(offset + labelWidth, height));
+    fOffset->SetExplicitMaxSize(BSize(offset + labelWidth, height));
+
+    labelWidth = be_plain_font->StringWidth("selection ");
     fSelection = new BTextControl("selection", "-", new BMessage('slct'));
+    fSelection->SetExplicitMinSize(BSize(select + labelWidth, height));
+    fSelection->SetExplicitMaxSize(BSize(select + labelWidth, height));
     fSelection->SetEnabled(false);
-    fSelection->SetExplicitMinSize(BSize(64.0, be_plain_font->Size()));
 
     fOutline = new BStringView("outline", "-");
-    fOutline->SetExplicitMinSize(BSize(180.0, be_plain_font->Size()));
+    fOutline->SetExplicitMinSize(BSize(180.0, height));
 
 	BLayoutBuilder::Group<>(this, B_HORIZONTAL)
 		.Add(fLine)
@@ -26,7 +45,7 @@ StatusBar::StatusBar() : BView("status_bar", 0) {
         .Add(fSelection)
         .Add(new BStringView("outlineLabel", "Outline"))
         .Add(fOutline)
-        .AddGlue(1.0);
+        .AddGlue(0.1);
 
     UpdatePosition(0, 1, 0);
     UpdateSelection(0, 0);

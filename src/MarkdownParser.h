@@ -45,8 +45,30 @@ public:
     // Get style runs for a specific range (more efficient for partial updates)
     std::vector<StyleRun> GetStyleRunsInRange(int32 startOffset, int32 endOffset) const;
 
-    // Get hierarchical outline
+    // Get hierarchical outline (full document)
     BMessage* GetOutline() { return &fOutline; }
+
+    // Fast outline queries using TreeSitter API directly
+    // Get heading at specific offset (returns null node if not a heading)
+    TSNode GetHeadingAtOffset(int32 offset) const;
+    
+    // Find all headings in document (lightweight, returns TSNode array)
+    std::vector<TSNode> FindAllHeadings() const;
+    
+    // Find parent heading for a given offset
+    TSNode FindParentHeading(int32 offset) const;
+    
+    // Find sibling headings at the same level
+    std::vector<TSNode> FindSiblingHeadings(TSNode heading) const;
+    
+    // Build a context trail (breadcrumb) from offset
+    void GetHeadingContext(int32 offset, BMessage* context) const;
+    
+    // Extract heading info from TSNode into BMessage
+    void ExtractHeadingInfo(TSNode node, BMessage* msg, bool withText = true) const;
+    
+    // Get heading level from node
+    int GetHeadingLevelFromNode(TSNode node) const;
 
     // Position queries
     TSNode GetNodeAtOffset(int32 offset) const;
@@ -109,7 +131,7 @@ private:
 
     // Outline building
     void BuildOutline();
-    void AddHeadingToOutline(TSNode node, int level);
+    void ProcessNodeForOutline(TSNode node, int32 parentOffset);
 
     // Utilities
     void InitializeDefaultStyles();

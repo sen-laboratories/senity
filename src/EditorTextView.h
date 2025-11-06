@@ -40,7 +40,8 @@ public:
                            const text_run_array* runs = nullptr);
     virtual void MessageReceived(BMessage* message);
     virtual void MouseDown(BPoint where);
-    virtual	void Pulse();
+    virtual void MouseUp(BPoint where);
+    virtual void KeyDown(const char* bytes, int32 numBytes);
 
     void SetText(BFile* file, int32 offset, size_t size);
     void MarkupText(const char* text);
@@ -57,29 +58,36 @@ public:
     void ClearHighlights();
     void RedrawHighlight(text_highlight* highlight);
 
-    bool GetOutlineAt(int32 offset, BMessage* outline, bool withNames = true);
+    BMessage* GetOutlineAt(int32 offset, bool withNames = true);
     BMessage* GetDocumentOutline(bool withNames = true, bool withDetails = false);
 
+    // Fast context queries using TreeSitter API
+    BMessage* GetHeadingContext(int32 offset);
+    BMessage* GetHeadingsInRange(int32 startOffset, int32 endOffset);
+    BMessage* GetSiblingHeadings(int32 offset);
+
+    // Legacy method - kept for compatibility during transition
+    bool GetOutlineContextForOffset(int32 offset, BMessage* contextOutline);
+
 private:
-    void    ApplyStyles(int32 offset, int32 length);
-    void    UpdateStatus();
-    int32   FindBlockStart(int32 line) const;
-    int32   FindBlockEnd(int32 line) const;
+    void ApplyStyles(int32 offset, int32 length);
+    void UpdateStatus();
+    int32 FindBlockStart(int32 line) const;
+    int32 FindBlockEnd(int32 line) const;
 
-    void    BuildContextMenu();
-    void    BuildContextSelectionMenu();
+    void BuildContextMenu();
+    void BuildContextSelectionMenu();
 
-    MarkdownParser*     fMarkdownParser;
-    SyntaxHighlighter*  fSyntaxHighlighter;
-    BHandler*           fEditorHandler;
-    StatusBar*          fStatusBar;
-    BFont*              fTextFont;
-    BFont*              fLinkFont;
-    BFont*              fCodeFont;
-    BFont*              fTableFont;
-    BFont*              fTableHeaderFont;
+    MarkdownParser* fMarkdownParser;
+    SyntaxHighlighter* fSyntaxHighlighter;
+    BHandler* fEditorHandler;
+    StatusBar* fStatusBar;
+    BFont* fTextFont;
+    BFont* fLinkFont;
+    BFont* fCodeFont;
+    BFont* fTableFont;
+    BFont* fTableHeaderFont;
     std::map<int32, text_highlight*>* fTextHighlights;
-    int32               fOldOffset;
 };
 
 #endif // EDITOR_TEXT_VIEW_H

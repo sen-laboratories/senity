@@ -74,11 +74,10 @@ struct NodeHighlightData {
 };
 
 EditorTextView::EditorTextView(StatusBar *statusView, BHandler *editorHandler)
-    : BTextView("EditorTextView", B_WILL_DRAW | B_FRAME_EVENTS | B_PULSE_NEEDED)
+    : BTextView("EditorTextView", B_WILL_DRAW | B_FRAME_EVENTS)
     , fEditorHandler(editorHandler)
     , fStatusBar(statusView)
     , fTextHighlights(new std::map<int32, text_highlight*>())
-    , fOldOffset(0)
 {
     // Initialize parser
     fMarkdownParser = new MarkdownParser();
@@ -460,88 +459,16 @@ void EditorTextView::MouseDown(BPoint where)
     }
 }
 
-void EditorTextView::Pulse()
+void EditorTextView::MouseUp(BPoint where)
 {
-    BTextView::Pulse();
+    UpdateStatus();
+    BTextView::MouseUp(where);
+}
 
-    // Get current cursor position (use end of selection as cursor)
-    int32 start, end;
-    GetSelection(&start, &end);
-    int32 currentOffset = end;
-
-    // Only update if cursor moved
-    if (currentOffset == fOldOffset) {
-        return;
-    }
-    fOldOffset = currentOffset;
-
-    // Get full document outline
-    BMessage* fullOutline = fMarkdownParser->GetOutline();
-    if (!fullOutline) {
-        return;
-    }
-
-    // Get count of headings
-    type_code type;
-    int32 count = 0;
-    if (fullOutline->GetInfo("heading", &type, &count) != B_OK || count == 0) {
-        fStatusBar->UpdateOutline(nullptr);
-        return;
-    }
-
-    // Find all headings that contain current offset
-    // Build breadcrumb trail showing hierarchy
-    BMessage contextOutline;
-    contextOutline.AddString("type", "outline");
-
-    std::vector<BMessage> headingStack;
-
-    for (int32 i = 0; i < count; i++) {
-        BMessage heading;
-        if (fullOutline->FindMessage("heading", i, &heading) != B_OK) {
-            continue;
-        }
-
-        int32 headingOffset = 0;
-        int32 headingLevel = 0;
-        const char* text = nullptr;
-
-        heading.FindInt32("offset", &headingOffset);
-        heading.FindInt32("level", &headingLevel);
-        heading.FindString("text", &text);
-
-        // Check if this heading is before current position
-        if (headingOffset <= currentOffset) {
-            // Remove headings at same or deeper level from stack
-            while (!headingStack.empty()) {
-                int32 stackLevel = 0;
-                headingStack.back().FindInt32("level", &stackLevel);
-                if (stackLevel >= headingLevel) {
-                    headingStack.pop_back();
-                } else {
-                    break;
-                }
-            }
-
-            // Add this heading to stack
-            headingStack.push_back(heading);
-        } else {
-            // Past current offset, stop searching
-            break;
-        }
-    }
-
-    // Build context outline from stack
-    for (const BMessage& heading : headingStack) {
-        contextOutline.AddMessage("heading", &heading);
-    }
-
-    // Update status bar with context outline
-    if (!headingStack.empty()) {
-        fStatusBar->UpdateOutline(&contextOutline);
-    } else {
-        fStatusBar->UpdateOutline(nullptr);
-    }
+void EditorTextView::KeyDown(const char* bytes, int32 numBytes)
+{
+    UpdateStatus();
+    BTextView::KeyDown(bytes, numBytes);
 }
 
 void EditorTextView::MarkupText(const char* text)
@@ -661,19 +588,12 @@ void EditorTextView::ApplyStyles(int32 offset, int32 length)
     // Invalidate to trigger Draw() for Unicode symbol rendering
     Invalidate();
 
-    // Update StatusBar and notify editor handler about outline update
+    // Notify editor handler about outline update (e.g., for window title)
+    // Note: StatusBar outline update happens in UpdateStatus() for better context
     BMessage* outline = fMarkdownParser->GetOutline();
-    if (outline) {
-        // Update StatusBar directly
-        if (fStatusBar) {
-            fStatusBar->UpdateOutline(outline);
-        }
-
-        // Also notify editor handler (e.g., for window title update)
-        if (fEditorHandler) {
-            BMessage outlineCopy(*outline);
-            BMessenger(fEditorHandler).SendMessage(&outlineCopy);
-        }
+    if (outline && fEditorHandler) {
+        BMessage outlineCopy(*outline);
+        BMessenger(fEditorHandler).SendMessage(&outlineCopy);
     }
 }
 
@@ -742,70 +662,24 @@ void EditorTextView::ClearHighlights()
     Invalidate();
 }
 
-bool EditorTextView::GetOutlineAt(int32 offset, BMessage* outline, bool withNames)
+BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames)
 {
     if (!fMarkdownParser) {
-        return false;
+        return nullptr;
     }
 
-    TSNode node = fMarkdownParser->GetNodeAtOffset(offset);
+    TSNode node = fMarkdownParser->GetHeadingAtOffset(offset);
     if (ts_node_is_null(node)) {
-        return false;
+        return nullptr;
     }
 
-    // Check if this is a heading node
-    const char* nodeType = ts_node_type(node);
-    if (strcmp(nodeType, "atx_heading") != 0) {
-        return false;
-    }
-
+    BMessage* outline = new BMessage();
     outline->what = 'OUTL';
+    outline->AddString("type", "single");
 
-    // Get heading level
-    int level = 1;
-    uint32_t childCount = ts_node_child_count(node);
+    fMarkdownParser->ExtractHeadingInfo(node, outline, withNames);
 
-    for (uint32_t i = 0; i < childCount; i++) {
-        TSNode child = ts_node_child(node, i);
-        const char* childType = ts_node_type(child);
-
-        if (strncmp(childType, "atx_h", 5) == 0 && childType[5] >= '1' && childType[5] <= '6') {
-            level = childType[5] - '0';
-            break;
-        }
-    }
-
-    // Get line number
-    int32 line = fMarkdownParser->GetLineForOffset(offset);
-
-    // Build message
-    outline->AddInt32("level",  level);
-    outline->AddInt32("line",   line);
-    outline->AddInt32("offset", offset);
-
-    // Extract heading text if requested
-    if (withNames) {
-        BString headingText;
-        for (uint32_t i = 0; i < childCount; i++) {
-            TSNode child = ts_node_child(node, i);
-            if (strcmp(ts_node_type(child), "inline") == 0) {
-                uint32_t start = ts_node_start_byte(child);
-                uint32_t end = ts_node_end_byte(child);
-                const char* source = Text();
-                headingText.SetTo(source + start, end - start);
-                headingText.Trim();
-                break;
-            }
-        }
-
-        if (headingText.Length() > 0) {
-            outline->AddString("text", headingText);
-        }
-    }
-
-    outline->PrintToStream();
-
-    return true;
+    return outline;
 }
 
 BMessage* EditorTextView::GetDocumentOutline(bool withNames, bool withDetails)
@@ -817,12 +691,78 @@ BMessage* EditorTextView::GetDocumentOutline(bool withNames, bool withDetails)
     return fMarkdownParser->GetOutline();
 }
 
+BMessage* EditorTextView::GetHeadingContext(int32 offset)
+{
+    if (!fMarkdownParser) {
+        return nullptr;
+    }
+
+    BMessage* context = new BMessage();
+    fMarkdownParser->GetHeadingContext(offset, context);
+
+    return context->IsEmpty() ? nullptr : context;
+}
+
+BMessage* EditorTextView::GetHeadingsInRange(int32 startOffset, int32 endOffset)
+{
+    if (!fMarkdownParser) {
+        return nullptr;
+    }
+
+    std::vector<TSNode> allHeadings = fMarkdownParser->FindAllHeadings();
+
+    BMessage* result = new BMessage();
+    result->what = 'OUTL';
+    result->AddString("type", "range");
+    result->AddInt32("start_offset", startOffset);
+    result->AddInt32("end_offset", endOffset);
+
+    for (const TSNode& heading : allHeadings) {
+        int32 offset = ts_node_start_byte(heading);
+        if (offset >= startOffset && offset < endOffset) {
+            BMessage headingMsg;
+            fMarkdownParser->ExtractHeadingInfo(heading, &headingMsg, true);
+            result->AddMessage("heading", &headingMsg);
+        }
+    }
+
+    return result->IsEmpty() ? nullptr : result;
+}
+
+BMessage* EditorTextView::GetSiblingHeadings(int32 offset)
+{
+    if (!fMarkdownParser) {
+        return nullptr;
+    }
+
+    TSNode heading = fMarkdownParser->GetHeadingAtOffset(offset);
+    if (ts_node_is_null(heading)) {
+        return nullptr;
+    }
+
+    std::vector<TSNode> siblings = fMarkdownParser->FindSiblingHeadings(heading);
+
+    BMessage* result = new BMessage();
+    result->what = 'OUTL';
+    result->AddString("type", "siblings");
+    result->AddInt32("reference_offset", offset);
+
+    for (const TSNode& sibling : siblings) {
+        BMessage headingMsg;
+        fMarkdownParser->ExtractHeadingInfo(sibling, &headingMsg, true);
+        result->AddMessage("heading", &headingMsg);
+    }
+
+    return result->IsEmpty() ? nullptr : result;
+}
+
 void EditorTextView::UpdateStatus()
 {
     if (!fStatusBar) return;
 
     int32 start, end;
     GetSelection(&start, &end);
+    int32 currentOffset = end;  // Use end as cursor position
 
     // Get line number from parser
     int32 line = fMarkdownParser ? fMarkdownParser->GetLineForOffset(start) : 0;
@@ -832,11 +772,36 @@ void EditorTextView::UpdateStatus()
         column = start - OffsetAt(CurrentLine());
     }
 
+    // Update position/selection display
     if (start == end) {
         fStatusBar->UpdatePosition(start, line, column);
     } else {
         fStatusBar->UpdateSelection(start, end);
     }
+
+    // Update outline context (breadcrumb trail) using fast TreeSitter query
+    BMessage* context = GetHeadingContext(currentOffset);
+    if (context) {
+        fStatusBar->UpdateOutline(context);
+        delete context;
+    } else {
+        fStatusBar->UpdateOutline(nullptr);
+    }
+}
+
+bool EditorTextView::GetOutlineContextForOffset(int32 offset, BMessage* contextOutline)
+{
+    if (!fMarkdownParser || !contextOutline) {
+        return false;
+    }
+
+    // Use the new fast TreeSitter-based method
+    fMarkdownParser->GetHeadingContext(offset, contextOutline);
+
+    // Check if we got any results
+    type_code type;
+    int32 count = 0;
+    return (contextOutline->GetInfo("heading", &type, &count) == B_OK && count > 0);
 }
 
 void EditorTextView::BuildContextMenu()
