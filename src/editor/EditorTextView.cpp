@@ -3,11 +3,10 @@
  * All rights reserved. Distributed under the terms of the MIT license.
  */
 
-#include "ColorDefs.h"
+#include "../common/ColorDefs.h"
 #include "EditorTextView.h"
 #include "StyleRun.h"
 
-#include <iostream>
 #include <vector>
 #include <Clipboard.h>
 #include <File.h>
@@ -240,11 +239,9 @@ void EditorTextView::Draw(BRect updateRect)
                            endPoint.x, startPoint.y + height);
 
         if (hl->outline) {
-            std::cout << "redraw outline" << std::endl;
             SetHighColor(*hl->fgColor);
             StrokeRect(highlightRect);
         } else {
-            std::cout << "redraw highlight" << std::endl;
             SetHighColor(*hl->bgColor);
             SetDrawingMode(B_OP_ALPHA);
             SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);

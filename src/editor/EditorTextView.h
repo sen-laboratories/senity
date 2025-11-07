@@ -3,12 +3,11 @@
  * All rights reserved. Distributed under the terms of the MIT license.
  */
 
-#ifndef EDITOR_TEXT_VIEW_H
-#define EDITOR_TEXT_VIEW_H
+#pragma once
 
-#include "MarkdownParser.h"
 #include "StatusBar.h"
-#include "SyntaxHighlighter.h"
+#include "../parser/MarkdownParser.h"
+#include "../parser/SyntaxHighlighter.h"
 
 #include <TextView.h>
 #include <Handler.h>
@@ -89,5 +88,3 @@ private:
     BFont* fTableHeaderFont;
     std::map<int32, text_highlight*>* fTextHighlights;
 };
-
-#endif // EDITOR_TEXT_VIEW_H

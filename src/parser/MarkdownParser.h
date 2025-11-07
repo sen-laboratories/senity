@@ -2,6 +2,7 @@
  * Copyright 2024-2025, Gregor B. Rosenauer <gregor.rosenauer@gmail.com>
  * All rights reserved. Distributed under the terms of the MIT license.
  */
+
 #pragma once
 
 #include <Message.h>
@@ -10,7 +11,7 @@
 #include <vector>
 #include <map>
 
-#include "StyleRun.h"
+#include "../editor/StyleRun.h"
 
 extern "C" {
 #include <tree_sitter/api.h>
@@ -51,22 +52,22 @@ public:
     // Fast outline queries using TreeSitter API directly
     // Get heading at specific offset (returns null node if not a heading)
     TSNode GetHeadingAtOffset(int32 offset) const;
-    
+
     // Find all headings in document (lightweight, returns TSNode array)
     std::vector<TSNode> FindAllHeadings() const;
-    
+
     // Find parent heading for a given offset
     TSNode FindParentHeading(int32 offset) const;
-    
+
     // Find sibling headings at the same level
     std::vector<TSNode> FindSiblingHeadings(TSNode heading) const;
-    
+
     // Build a context trail (breadcrumb) from offset
     void GetHeadingContext(int32 offset, BMessage* context) const;
-    
+
     // Extract heading info from TSNode into BMessage
     void ExtractHeadingInfo(TSNode node, BMessage* msg, bool withText = true) const;
-    
+
     // Get heading level from node
     int GetHeadingLevelFromNode(TSNode node) const;
 

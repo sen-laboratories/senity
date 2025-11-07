@@ -31,7 +31,7 @@ APP_MIME_SIG = application/x-vnd.sen-labs.senity-test
 #	Also note that spaces in folder names do not work well with this Makefile.
 
 # all .cpp files
-ALL_SRCS := $(wildcard *.cpp) $(wildcard ../*.cpp)
+ALL_SRCS := $(shell find .. -name '*.cpp')
 
 # Exclude main application source (there can be only one main() )
 SRCS := $(filter-out ../App.cpp, $(ALL_SRCS))

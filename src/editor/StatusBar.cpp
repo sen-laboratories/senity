@@ -1,11 +1,12 @@
 /*
- * Copyright 2024, Gregor B. Rosenauer <gregor.rosenauer@gmail.com>
+ * Copyright 2024-2025, Gregor B. Rosenauer <gregor.rosenauer@gmail.com>
  * All rights reserved. Distributed under the terms of the MIT license.
  */
 
 #include <LayoutBuilder.h>
 #include <SeparatorView.h>
 #include <string>
+
 #include "StatusBar.h"
 
 StatusBar::StatusBar() : BView("status_bar", 0) {
