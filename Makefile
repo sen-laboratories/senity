@@ -31,9 +31,10 @@ APP_MIME_SIG = application/x-vnd.sen-labs.senity
 #	Also note that spaces in folder names do not work well with this Makefile.
 # all .cpp files
 ALL_SRCS := $(shell find src -name '*.cpp')
+TEST_SRCS := $(shell find src/test -name '*.cpp')
 
 # Exclude main application source (there can be only one main() )
-SRCS := $(filter-out src/test/ParserTest.cpp, $(ALL_SRCS))
+SRCS := $(filter-out $(TEST_SRCS), $(ALL_SRCS))
 
 #	Specify the resource definition files to use. Full or relative paths can be
 #	used.
