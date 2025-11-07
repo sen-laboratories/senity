@@ -425,9 +425,6 @@ void EditorTextView::MouseDown(BPoint where)
     uint32 buttons;
     Window()->CurrentMessage()->FindInt32("buttons", (int32*)&buttons);
 
-    printf("and the selectionChanged message is:\n");
-    Window()->CurrentMessage()->PrintToStream();
-
     UpdateStatus();
 
     if (buttons & B_SECONDARY_MOUSE_BUTTON) {

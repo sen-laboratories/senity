@@ -597,23 +597,10 @@ void MarkdownParser::ProcessNodeForOutline(TSNode node, int32 parentOffset)
         BString text;
         TSNode contentNode = ts_node_child_by_field_name(node, "heading_content", 15);
         if (!ts_node_is_null(contentNode)) {
-            // Got it via field name
-            printf("  found inline child via field name!\n");
             text = GetNodeText(contentNode);
             text.Trim();
         } else {
-            // Fallback: look for inline child
-            printf("  NO inline child via field name, fall back to children loop!\n");
-            uint32_t namedChildCount = ts_node_named_child_count(node);
-            for (uint32_t i = 0; i < namedChildCount; i++) {
-                TSNode child = ts_node_named_child(node, i);
-                const char* childType = ts_node_type(child);
-                if (strcmp(childType, "inline") == 0) {
-                    text = GetNodeText(child);
-                    text.Trim();
-                    break;
-                }
-            }
+            text = "unknown heading";
         }
 
         if (fDebugEnabled) {
@@ -652,25 +639,6 @@ void MarkdownParser::BuildOutline()
             printf("BuildOutline - No tree available\n");
         }
         return;
-    }
-
-    if (fDebugEnabled) {
-        printf("\n=== Building Outline ===\n");
-
-        // Debug: Show what field names are actually defined in the grammar
-        const TSLanguage* lang = ts_parser_language(fParser);
-        uint32_t fieldCount = ts_language_field_count(lang);
-        if (fieldCount > 0) {
-            printf("Grammar defines %u field names:\n", fieldCount);
-            for (uint32_t i = 1; i <= fieldCount; i++) {  // Field IDs start at 1
-                const char* fieldName = ts_language_field_name_for_id(lang, i);
-                if (fieldName) {
-                    printf("  Field %u: %s\n", i, fieldName);
-                }
-            }
-        } else {
-            printf("Grammar defines no field names (will use node type matching)\n");
-        }
     }
 
     TSNode root = ts_tree_root_node(fTree);

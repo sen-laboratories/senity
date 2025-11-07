@@ -22,18 +22,20 @@ public:
 	virtual void			MessageReceived(BMessage* msg);
 
 private:
-			BMenuBar*		BuildMenu();
+    BMenuBar*		BuildMenu();
 
-			status_t		LoadSettings(BMessage& settings);
-			status_t		SaveSettings();
+    status_t		LoadSettings(BMessage* settings);
+    status_t		SaveSettings(BMessage* settings);
+    void            ApplySettings(BMessage* settings);
+    BMessage*       fSettings;
 
-			BMenuItem*		fSaveMenuItem;
-            // panels
-            BMenuItem*      fOutlinePanelItem;
+    BMenuItem*		fSaveMenuItem;
+    // panels
+    BMenuItem*      fOutlinePanelItem;
 
-			BFilePanel*		fOpenPanel;
-			BFilePanel*		fSavePanel;
-            OutlinePanel*   fOutlinePanel;
+    BFilePanel*		fOpenPanel;
+    BFilePanel*		fSavePanel;
+    OutlinePanel*   fOutlinePanel;
 
-            EditorView*     fEditorView;
+    EditorView*     fEditorView;
 };

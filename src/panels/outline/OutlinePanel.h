@@ -25,22 +25,37 @@ private:
     int32 fOffset;
 };
 
+class OutlineListView : public BOutlineListView {
+public:
+    OutlineListView(BMessenger *target)
+        : BOutlineListView("outline_listview")
+        , fSuppressSelectionMessage(false)
+        , fTargetMessenger(target)
+    {}
+
+    virtual void SelectionChanged();
+    void SetSuppressSelectionMessage(bool suppress) { fSuppressSelectionMessage = suppress; }
+
+private:
+    bool                fSuppressSelectionMessage;
+    BMessenger*         fTargetMessenger;
+};
+
 class OutlinePanel : public BWindow {
 public:
-    OutlinePanel(BRect frame, BHandler* target);
+    OutlinePanel(BRect frame, BMessenger* target);
     virtual ~OutlinePanel();
 
-    virtual void MessageReceived(BMessage* message);
-    virtual bool QuitRequested();
+    virtual void        MessageReceived(BMessage* message);
+    virtual bool        QuitRequested();
 
     void UpdateOutline(BMessage* outline);
     void HighlightCurrent(int32 offset);
 
 private:
-    void AddHeadingsRecursive(BMessage* outline, int32& index,
-                              OutlineItem** parents, int32 parentLevel);
+    void AddHeadingsFlat(BMessage* outline);
 
-    BHandler*           fTarget;
+    BMessenger*         fTargetMessenger;
     BScrollView*        fScrollView;
-    BOutlineListView*   fListView;
+    OutlineListView*    fListView;
 };

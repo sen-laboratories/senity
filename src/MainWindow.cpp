@@ -75,34 +75,40 @@ MainWindow::MainWindow()
         .Add(menuBar)
         .Add(fEditorView);
 
-	BMessenger messenger(this);
-	fOpenPanel = new BFilePanel(B_OPEN_PANEL, &messenger, NULL, B_FILE_NODE, false);
-	fSavePanel = new BFilePanel(B_SAVE_PANEL, &messenger, NULL, B_FILE_NODE, false);
+    fSettings = new BMessage(MSG_SETTINGS);
+	status_t status = LoadSettings(fSettings);
 
-	BMessage settings;
-	LoadSettings(settings);
+    if (status != B_OK) {
+        printf("error loading settings, using defaults.");
+    }
 
 	BRect frame;
-	if (settings.FindRect("main_window_rect", &frame) == B_OK) {
+	if (fSettings->FindRect("main_window_rect", &frame) == B_OK) {
 		MoveTo(frame.LeftTop());
 		ResizeTo(frame.Width(), frame.Height());
         MoveOnScreen();
 	} else {
         ResizeTo(320.0, 480.0);
         CenterOnScreen();
+        frame = Frame();
     }
 
     // panels
+    BMessenger messenger(this);
+	fOpenPanel = new BFilePanel(B_OPEN_PANEL, &messenger, NULL, B_FILE_NODE, false);
+	fSavePanel = new BFilePanel(B_SAVE_PANEL, &messenger, NULL, B_FILE_NODE, false);
+
     // Create outline panel (initially hidden)
     BRect panelFrame(frame.left - 240.0, frame.top, frame.left - 12.0, frame.bottom);
+    fOutlinePanel = new OutlinePanel(panelFrame, &messenger);
+    fOutlinePanel->Show();
 
-    fOutlinePanel = new OutlinePanel(panelFrame, this);
-    fOutlinePanel->Hide();
+    ApplySettings(fSettings);
 }
 
 MainWindow::~MainWindow()
 {
-	SaveSettings();
+	SaveSettings(fSettings);
 
 	delete fOpenPanel;
 	delete fSavePanel;
@@ -186,16 +192,14 @@ void MainWindow::MessageReceived(BMessage* message)
         case MSG_OUTLINE_TOGGLE:
         {
             printf("toggle outline...\n");
+            bool show = ! fSettings->GetBool(CONF_PANEL_OUTLINE_SHOW);
+            fSettings->SetBool(CONF_PANEL_OUTLINE_SHOW, show);
 
-            if (fOutlinePanel) {
-                if (fOutlinePanel->IsHidden()) {
-                    printf("Editor: SHOW outline panel.\n");
-                    fOutlinePanel->Show();
-                } else {
-                    printf("Editor: HIDE outline panel.\n");
-                    fOutlinePanel->Hide();
-                }
-            }
+            if (show)
+                fOutlinePanel->Show();
+            else
+                fOutlinePanel->Hide();
+
             break;
         }
         case MSG_OUTLINE_UPDATE:
@@ -274,15 +278,16 @@ BMenuBar* MainWindow::BuildMenu()
     // menu 'Panels'
 	menu = new BMenu(B_TRANSLATE("Panels"));
 
-	item = new BMenuItem(B_TRANSLATE("Outline"), new BMessage(MSG_OUTLINE_TOGGLE), 'O', B_OPTION_KEY);
-	menu->AddItem(item);
+	fOutlinePanelItem = new BMenuItem(B_TRANSLATE("Outline"),
+                                      new BMessage(MSG_OUTLINE_TOGGLE), 'O', B_OPTION_KEY);
+    menu->AddItem(fOutlinePanelItem);
 
 	menuBar->AddItem(menu);
 
 	return menuBar;
 }
 
-status_t MainWindow::LoadSettings(BMessage& settings)
+status_t MainWindow::LoadSettings(BMessage* settings)
 {
 	BPath path;
 	status_t status;
@@ -299,10 +304,10 @@ status_t MainWindow::LoadSettings(BMessage& settings)
 	if (status != B_OK)
 		return status;
 
-	return settings.Unflatten(&file);
+	return settings->Unflatten(&file);
 }
 
-status_t MainWindow::SaveSettings()
+status_t MainWindow::SaveSettings(BMessage* settings)
 {
 	BPath path;
 	status_t status = find_directory(B_USER_SETTINGS_DIRECTORY, &path);
@@ -318,11 +323,16 @@ status_t MainWindow::SaveSettings()
 	if (status != B_OK)
 		return status;
 
-	BMessage settings;
-	status = settings.AddRect("main_window_rect", Frame());
+	return settings->Flatten(&file);
+}
 
-	if (status == B_OK)
-		status = settings.Flatten(&file);
+void MainWindow::ApplySettings(BMessage* settings)
+{
+    printf("Apply settings...\n");
+    settings->PrintToStream();
 
-	return status;
+    bool show = settings->GetBool(CONF_PANEL_OUTLINE_SHOW);
+	fOutlinePanelItem->SetMarked(show);
+    if (!show)
+        fOutlinePanel->Hide();
 }

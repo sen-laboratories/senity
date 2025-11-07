@@ -12,12 +12,13 @@
 #include <String.h>
 #include <stdio.h>
 
-/*
+// OutlineListView implementation
+
 void OutlineListView::SelectionChanged()
 {
     BOutlineListView::SelectionChanged();
 
-    if (!fTarget)
+    if (fSuppressSelectionMessage)
         return;
 
     int32 index = CurrentSelection();
@@ -28,26 +29,27 @@ void OutlineListView::SelectionChanged()
     if (!item)
         return;
 
-    BMessage msg(MSG_OUTLINE_SELECTED);
-    msg.AddInt32("offset", item->Offset());
+    BMessage selectionMsg(MSG_OUTLINE_SELECTED);
+    selectionMsg.AddInt32("offsetStart", item->Offset());
+    selectionMsg.AddInt32("offsetEnd", item->Offset());
 
-    BMessenger messenger(fTarget);
-    messenger.SendMessage(&msg);
+    if (fTargetMessenger) {
+        fTargetMessenger->SendMessage(&selectionMsg);
+    }
 }
-*/
 
-OutlinePanel::OutlinePanel(BRect frame, BHandler* target)
-    : BWindow(frame, "outline_window", B_FLOATING_WINDOW_LOOK, B_NORMAL_WINDOW_FEEL,
-              B_AUTO_UPDATE_SIZE_LIMITS | B_ASYNCHRONOUS_CONTROLS)
+// OutlinePanel implementation
+
+OutlinePanel::OutlinePanel(BRect frame, BMessenger* target)
+    : BWindow(frame, "Outline", B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
+              B_AUTO_UPDATE_SIZE_LIMITS | B_ASYNCHRONOUS_CONTROLS |
+              B_NOT_ZOOMABLE | B_AVOID_FRONT | B_WILL_ACCEPT_FIRST_CLICK)
+    , fTargetMessenger(target)
 {
     printf("OutlinePanel initializing...\n");
 
-    // Create list view
-    fListView = new BOutlineListView("outline_listview");
-    fListView->SetTarget(target);
-
-    BMessage selectionMsg(MSG_OUTLINE_SELECTED);
-    fListView->SetSelectionMessage(&selectionMsg);
+    // Create custom list view
+    fListView = new OutlineListView(target);
 
     // Wrap in scroll view
     fScrollView = new BScrollView("outline_scroll", fListView,
@@ -67,10 +69,29 @@ OutlinePanel::~OutlinePanel()
 
 void OutlinePanel::MessageReceived(BMessage* message)
 {
+    printf("OutlinePanel::MessageReceived\n");
+
     switch (message->what) {
-        case MSG_OUTLINE_UPDATE:
-            UpdateOutline(message);
+        case MSG_OUTLINE_TOGGLE:
+        {
+            bool show = message->GetBool("show");
+            if (show) {
+                printf("OutlinePanel: SHOW outline panel.\n");
+                //Show();
+            } else {
+                printf("OutlinePanel: HIDE outline panel.\n");
+                //Hide();
+            }
             break;
+        }
+        case MSG_OUTLINE_UPDATE:
+        {
+            BMessage outline;
+            if (message->FindMessage("outline", &outline) == B_OK) {
+                UpdateOutline(&outline);
+            }
+            break;
+        }
         default:
             BWindow::MessageReceived(message);
             break;
@@ -79,14 +100,15 @@ void OutlinePanel::MessageReceived(BMessage* message)
 
 bool OutlinePanel::QuitRequested()
 {
-    BMessenger(fTarget).SendMessage(MSG_OUTLINE_TOGGLE);
+    fTargetMessenger->SendMessage(MSG_OUTLINE_TOGGLE);
+    return false;  // Don't actually quit, just hide
 }
 
 void OutlinePanel::UpdateOutline(BMessage* outline)
 {
     if (!outline) return;
 
-    printf("OutlinePanel::UpdateOutline:\n");
+    printf("OutlinePanel::UpdateOutline\n");
 
     fListView->MakeEmpty();
 
@@ -94,26 +116,29 @@ void OutlinePanel::UpdateOutline(BMessage* outline)
     type_code type;
     int32 count = 0;
     if (outline->GetInfo("heading", &type, &count) != B_OK || count == 0) {
+        printf("No headings in outline\n");
         return;
     }
 
-    // Recursively add headings
-    OutlineItem* parents[7] = {nullptr};  // H1-H6
-    int32 index = 0;
-    AddHeadingsRecursive(outline, index, parents, 0);
+    printf("Adding %d headings\n", count);
+
+    // Use simple flat iteration with parent tracking
+    AddHeadingsFlat(outline);
 }
 
-void OutlinePanel::AddHeadingsRecursive(BMessage* outline, int32& index,
-                                        OutlineItem** parents, int32 parentLevel)
+void OutlinePanel::AddHeadingsFlat(BMessage* outline)
 {
     type_code type;
     int32 count = 0;
     outline->GetInfo("heading", &type, &count);
 
-    while (index < count) {
+    OutlineItem* parents[7] = {nullptr};  // H1-H6, index by level
+    int32 lastLevel = 0;
+
+    for (int32 i = 0; i < count; i++) {
         BMessage heading;
-        if (outline->FindMessage("heading", index, &heading) != B_OK) {
-            index++;
+        if (outline->FindMessage("heading", i, &heading) != B_OK) {
+            printf("Failed to get heading %d\n", i);
             continue;
         }
 
@@ -123,40 +148,40 @@ void OutlinePanel::AddHeadingsRecursive(BMessage* outline, int32& index,
         heading.FindInt32("level", &level);
         heading.FindInt32("offset", &offset);
 
-        // If level is same or lower than parent, we're done with this subtree
-        if (level <= parentLevel) {
-            return;
+        printf("Adding H%d: %s at offset %d\n", level, text.String(), offset);
+
+        // Create item with outline level (0-based for BOutlineListView)
+        OutlineItem* item = new OutlineItem(text, offset, level - 1);
+
+        // Clear parent pointers for levels >= current level
+        for (int32 j = level; j <= 6; j++) {
+            parents[j] = nullptr;
         }
 
-        // Create item
-        OutlineItem* item = new OutlineItem(text, offset, level);
-
-        // Add to tree structure
-        if (level == parentLevel + 1) {
-            // Direct child
-            if (parentLevel == 0) {
-                fListView->AddItem(item);
-            } else {
-                fListView->AddUnder(item, parents[parentLevel]);
+        // Find parent (first non-null parent at level < current)
+        OutlineItem* parent = nullptr;
+        for (int32 j = level - 1; j >= 1; j--) {
+            if (parents[j]) {
+                parent = parents[j];
+                break;
             }
-            parents[level] = item;
-            index++;
-
-            // Process children recursively
-            AddHeadingsRecursive(outline, index, parents, level);
-
-        } else if (level > parentLevel + 1) {
-            // Skipped levels - shouldn't happen with proper markdown, but handle it
-            // by treating it as a child of current parent
-            if (parentLevel == 0) {
-                fListView->AddItem(item);
-            } else {
-                fListView->AddUnder(item, parents[parentLevel]);
-            }
-            parents[level] = item;
-            index++;
         }
+
+        // Add to tree
+        if (LockLooper()) {
+            if (parent) {
+                fListView->AddUnder(item, parent);
+            } else {
+                fListView->AddItem(item);
+            }
+            UnlockLooper();
+        }
+        // This item becomes the parent for its level
+        parents[level] = item;
+        lastLevel = level;
     }
+
+    printf("OutlinePanel: Added all headings\n");
 }
 
 void OutlinePanel::HighlightCurrent(int32 offset)
@@ -164,18 +189,20 @@ void OutlinePanel::HighlightCurrent(int32 offset)
     if (!fListView)
         return;
 
-    // Find item closest to offset
+    fListView->SetSuppressSelectionMessage(true);
+
+    // Find item closest to offset (last heading before or at offset)
     int32 bestIndex = -1;
     int32 bestOffset = -1;
 
-    for (int32 i = 0; i < fListView->CountItems(); i++) {
-        OutlineItem* item = dynamic_cast<OutlineItem*>(fListView->ItemAt(i));
+    int32 count = fListView->FullListCountItems();
+    for (int32 i = 0; i < count; i++) {
+        OutlineItem* item = dynamic_cast<OutlineItem*>(fListView->FullListItemAt(i));
         if (!item)
             continue;
 
         int32 itemOffset = item->Offset();
 
-        // Find the last heading before current offset
         if (itemOffset <= offset) {
             if (bestOffset < 0 || itemOffset > bestOffset) {
                 bestOffset = itemOffset;
@@ -186,7 +213,13 @@ void OutlinePanel::HighlightCurrent(int32 offset)
 
     // Select the item
     if (bestIndex >= 0) {
-        fListView->Select(bestIndex);
-        fListView->ScrollToSelection();
+        if (LockLooper()) {
+            fListView->Select(bestIndex);
+            fListView->ScrollToSelection();
+            UnlockLooper();
+        }
     }
+
+    // Re-enable selection messages
+    fListView->SetSuppressSelectionMessage(false);
 }

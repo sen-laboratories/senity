@@ -11,6 +11,11 @@
  * core editor functionality
  */
 
+// settings
+static const uint32 MSG_SETTINGS  = 'Conf';
+// config keys
+#define CONF_PANEL_OUTLINE_SHOW     "conf:panel:outline:show"
+
 // file handling
 static const uint32 MSG_FILE_NEW  = 'Fnew';
 static const uint32 MSG_FILE_OPEN = 'Fopn';
