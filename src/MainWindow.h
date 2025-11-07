@@ -10,7 +10,8 @@
 #include <TextControl.h>
 #include <Window.h>
 
-#include "EditorView.h"
+#include "editor/EditorView.h"
+#include "panels/outline/OutlinePanel.h"
 
 class MainWindow : public BWindow
 {
@@ -21,13 +22,18 @@ public:
 	virtual void			MessageReceived(BMessage* msg);
 
 private:
-			BMenuBar*		_BuildMenu();
+			BMenuBar*		BuildMenu();
 
-			status_t		_LoadSettings(BMessage& settings);
-			status_t		_SaveSettings();
+			status_t		LoadSettings(BMessage& settings);
+			status_t		SaveSettings();
 
 			BMenuItem*		fSaveMenuItem;
+            // panels
+            BMenuItem*      fOutlinePanelItem;
+
 			BFilePanel*		fOpenPanel;
 			BFilePanel*		fSavePanel;
+            OutlinePanel*   fOutlinePanel;
+
             EditorView*     fEditorView;
 };

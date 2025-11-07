@@ -2,11 +2,11 @@
  * Copyright 2024-2025, Gregor B. Rosenauer <gregor.rosenauer@gmail.com>
  * All rights reserved. Distributed under the terms of the MIT license.
  */
-#ifndef OUTLINE_PANEL_H
-#define OUTLINE_PANEL_H
+
+#pragma once
 
 #include <Window.h>
-#include <ListView.h>
+#include <OutlineListView.h>
 #include <ScrollView.h>
 #include <StringItem.h>
 
@@ -14,47 +14,33 @@ class EditorTextView;
 
 class OutlineItem : public BStringItem {
 public:
-    OutlineItem(const char* text, int32 level, int32 offset);
-    
-    virtual void DrawItem(BView* owner, BRect frame, bool complete = false);
-    
-    int32 GetOffset() const { return fOffset; }
-    int32 GetLevel() const { return fLevel; }
+    OutlineItem(const char* text, int32 offset, uint32 level = 0)
+        : BStringItem(text, level, false)
+        , fOffset(offset)
+    {}
+
+    int32 Offset() const { return fOffset; }
 
 private:
-    int32 fLevel;
     int32 fOffset;
-};
-
-class OutlineListView : public BListView {
-public:
-    OutlineListView();
-    
-    virtual void SelectionChanged();
-    
-    void SetTarget(BHandler* target) { fTarget = target; }
-
-private:
-    BHandler* fTarget;
 };
 
 class OutlinePanel : public BWindow {
 public:
-    OutlinePanel(BRect frame, EditorTextView* textView);
+    OutlinePanel(BRect frame, BHandler* target);
     virtual ~OutlinePanel();
-    
+
     virtual void MessageReceived(BMessage* message);
     virtual bool QuitRequested();
-    
-    void UpdateOutline();
+
+    void UpdateOutline(BMessage* outline);
     void HighlightCurrent(int32 offset);
 
 private:
-    EditorTextView* fTextView;
-    OutlineListView* fListView;
-    BScrollView* fScrollView;
+    void AddHeadingsRecursive(BMessage* outline, int32& index,
+                              OutlineItem** parents, int32 parentLevel);
+
+    BHandler*           fTarget;
+    BScrollView*        fScrollView;
+    BOutlineListView*   fListView;
 };
-
-#define MSG_OUTLINE_SELECTED 'outS'
-
-#endif // OUTLINE_PANEL_H

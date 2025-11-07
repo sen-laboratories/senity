@@ -11,7 +11,9 @@
 #include "EditorView.h"
 #include "../common/Messages.h"
 
-EditorView::EditorView() : BView("editor_view", B_WILL_DRAW | B_PULSE_NEEDED | B_FRAME_EVENTS)
+EditorView::EditorView(BHandler* parent)
+: BView("editor_view", B_WILL_DRAW | B_PULSE_NEEDED | B_FRAME_EVENTS)
+, fParentHandler(parent)
 {
     fColorDefs  = new ColorDefs();
     fStatusBar  = new StatusBar();
@@ -59,6 +61,25 @@ void EditorView::MessageReceived(BMessage* message) {
                 const rgb_color *col = fColorDefs->GetColor(static_cast<COLOR_NAME>(colorIndex));
                 fTextView->HighlightSelection(NULL, col);
             }
+            break;
+        }
+        case MSG_OUTLINE_SELECTED:
+        {
+            // Jump to selected heading
+            message->PrintToStream();
+
+            int32 offset;
+            if (message->FindInt32("offsetStart", &offset) == B_OK) {
+                fTextView->Select(offset, offset);
+                fTextView->ScrollToSelection();
+                fTextView->MakeFocus(true);
+            }
+            break;
+        }
+        case MSG_SELECTION_CHANGED:
+        {
+            // hand over to parent which controls all views
+            fParentHandler->MessageReceived(message);
             break;
         }
         default:

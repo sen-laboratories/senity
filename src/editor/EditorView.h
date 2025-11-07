@@ -16,7 +16,7 @@
 class EditorView : public BView {
 
 public:
-                    EditorView();
+                    EditorView(BHandler* parent);
     virtual         ~EditorView();
     virtual void    MessageReceived(BMessage* message);
 
@@ -24,6 +24,7 @@ public:
     void            SetText(const char* text);
 
 private:
+    BHandler*       fParentHandler;
     EditorTextView* fTextView;
     BScrollView*	fScrollView;
     StatusBar*      fStatusBar;

@@ -4,6 +4,7 @@
  */
 
 #include "../common/ColorDefs.h"
+#include "../common/Messages.h"
 #include "EditorTextView.h"
 #include "StyleRun.h"
 
@@ -20,31 +21,6 @@
 #include <cstdio>
 #include <cstring>
 #include <strings.h>
-
-// Color mapping for Markdown elements
-static const struct {
-    StyleRun::Type type;
-    rgb_color color;
-} COLOR_MAP[] = {
-    {StyleRun::Type::NORMAL, {0, 0, 0, 255}},           // black
-    {StyleRun::Type::LINK, {0, 102, 204, 255}},         // blue
-    {StyleRun::Type::CODE_INLINE, {60, 60, 60, 255}},   // gray
-    {StyleRun::Type::CODE_BLOCK, {60, 60, 60, 255}},    // gray
-    {StyleRun::Type::LIST_BULLET, {128, 128, 128, 255}}, // gray
-    {StyleRun::Type::LIST_NUMBER, {128, 128, 128, 255}}, // gray
-    {StyleRun::Type::TASK_MARKER_UNCHECKED, {128, 128, 128, 255}}, // gray
-    {StyleRun::Type::TASK_MARKER_CHECKED, {0, 150, 0, 255}},        // green
-    {StyleRun::Type::TABLE_HEADER, {0, 0, 0, 255}},                  // black (bold via font)
-    {StyleRun::Type::TABLE_CELL, {0, 0, 0, 255}},                    // black
-    {StyleRun::Type::TABLE_DELIMITER, {180, 180, 180, 255}},         // light gray (pipes)
-    {StyleRun::Type::TABLE_ROW_DELIMITER, {150, 150, 150, 255}},     // medium gray (---|---)
-    {StyleRun::Type::HEADING_1, {0, 102, 204, 255}},                 // blue (bold via font)
-    {StyleRun::Type::HEADING_2, {0, 102, 204, 255}},    // blue
-    {StyleRun::Type::HEADING_3, {0, 102, 204, 255}},    // blue
-    {StyleRun::Type::HEADING_4, {0, 102, 204, 255}},    // blue
-    {StyleRun::Type::HEADING_5, {0, 102, 204, 255}},    // blue
-    {StyleRun::Type::HEADING_6, {0, 102, 204, 255}},    // blue
-};
 
 static rgb_color GetColorForType(StyleRun::Type type) {
     for (size_t i = 0; i < sizeof(COLOR_MAP) / sizeof(COLOR_MAP[0]); i++) {
@@ -126,6 +102,7 @@ EditorTextView::EditorTextView(StatusBar *statusView, BHandler *editorHandler)
     }
 
     SetStylable(true);
+    SetAutoindent(true);
 }
 
 EditorTextView::~EditorTextView()
@@ -320,6 +297,9 @@ void EditorTextView::DeleteText(int32 start, int32 finish)
 
     ApplyStyles(blockStart, blockEnd - blockStart);
 
+    // Send outline update notification
+    SendOutlineUpdate();
+
     UpdateStatus();
 }
 
@@ -364,6 +344,9 @@ void EditorTextView::InsertText(const char* text, int32 length, int32 offset, co
     int32 blockEnd = FindBlockEnd(startLine);
 
     ApplyStyles(blockStart, blockEnd - blockStart);
+
+    // Send outline update notification
+    SendOutlineUpdate();
 
     UpdateStatus();
 }
@@ -442,9 +425,16 @@ void EditorTextView::MouseDown(BPoint where)
     uint32 buttons;
     Window()->CurrentMessage()->FindInt32("buttons", (int32*)&buttons);
 
+    printf("and the selectionChanged message is:\n");
+    Window()->CurrentMessage()->PrintToStream();
+
+    UpdateStatus();
+
     if (buttons & B_SECONDARY_MOUSE_BUTTON) {
+        // get selection offsets
         int32 start, end;
         GetSelection(&start, &end);
+
         // Right-click: build and show context menu
         if (start != end) {
             BuildContextSelectionMenu();
@@ -671,7 +661,7 @@ BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames)
     }
 
     BMessage* outline = new BMessage();
-    outline->what = 'OUTL';
+    outline->what = MSG_OUTLINE;
     outline->AddString("type", "single");
 
     fMarkdownParser->ExtractHeadingInfo(node, outline, withNames);
@@ -709,7 +699,7 @@ BMessage* EditorTextView::GetHeadingsInRange(int32 startOffset, int32 endOffset)
     std::vector<TSNode> allHeadings = fMarkdownParser->FindAllHeadings();
 
     BMessage* result = new BMessage();
-    result->what = 'OUTL';
+    result->what = MSG_OUTLINE;
     result->AddString("type", "range");
     result->AddInt32("start_offset", startOffset);
     result->AddInt32("end_offset", endOffset);
@@ -740,7 +730,7 @@ BMessage* EditorTextView::GetSiblingHeadings(int32 offset)
     std::vector<TSNode> siblings = fMarkdownParser->FindSiblingHeadings(heading);
 
     BMessage* result = new BMessage();
-    result->what = 'OUTL';
+    result->what = MSG_OUTLINE;
     result->AddString("type", "siblings");
     result->AddInt32("reference_offset", offset);
 
@@ -784,6 +774,13 @@ void EditorTextView::UpdateStatus()
     } else {
         fStatusBar->UpdateOutline(nullptr);
     }
+
+    // update outline position in outline panel
+    BMessage updateSelection(MSG_SELECTION_CHANGED);
+    updateSelection.AddInt32("offsetStart", start);
+    updateSelection.AddInt32("offsetEnd", end);
+
+    BMessenger(fEditorHandler).SendMessage(&updateSelection);
 }
 
 bool EditorTextView::GetOutlineContextForOffset(int32 offset, BMessage* contextOutline)
@@ -867,4 +864,19 @@ void EditorTextView::RedrawHighlight(text_highlight *highlight)
     if (!highlight || !highlight->region) return;
 
     Invalidate(highlight->region->Frame());
+}
+
+void EditorTextView::SendOutlineUpdate()
+{
+    if (!fEditorHandler || !fMarkdownParser) return;
+
+    BMessage update(MSG_OUTLINE_UPDATE);
+    BMessage* outline = fMarkdownParser->GetOutline();
+    if (outline) {
+        update.AddMessage("outline", outline);
+    }
+
+    printf("EditorTextView::SenOutlineUpdate...\n");
+
+    BMessenger(fEditorHandler).SendMessage(&update);
 }

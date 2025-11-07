@@ -71,20 +71,26 @@ public:
 private:
     void ApplyStyles(int32 offset, int32 length);
     void UpdateStatus();
+    void SendOutlineUpdate();
+
     int32 FindBlockStart(int32 line) const;
     int32 FindBlockEnd(int32 line) const;
 
     void BuildContextMenu();
     void BuildContextSelectionMenu();
 
-    MarkdownParser* fMarkdownParser;
-    SyntaxHighlighter* fSyntaxHighlighter;
-    BHandler* fEditorHandler;
-    StatusBar* fStatusBar;
+    BHandler*           fEditorHandler;
+
+    StatusBar*          fStatusBar;
+
+    MarkdownParser*     fMarkdownParser;
+    SyntaxHighlighter*  fSyntaxHighlighter;
+
     BFont* fTextFont;
     BFont* fLinkFont;
     BFont* fCodeFont;
     BFont* fTableFont;
     BFont* fTableHeaderFont;
+
     std::map<int32, text_highlight*>* fTextHighlights;
 };

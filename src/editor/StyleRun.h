@@ -88,3 +88,28 @@ struct StyleRun {
         , background({255, 255, 255, 255})
     {}
 };
+
+// Color mapping for Markdown elements
+static const struct {
+    StyleRun::Type type;
+    rgb_color color;
+} COLOR_MAP[] = {
+    {StyleRun::Type::NORMAL, {0, 0, 0, 255}},           // black
+    {StyleRun::Type::LINK, {0, 102, 204, 255}},         // blue
+    {StyleRun::Type::CODE_INLINE, {60, 60, 60, 255}},   // gray
+    {StyleRun::Type::CODE_BLOCK, {60, 60, 60, 255}},    // gray
+    {StyleRun::Type::LIST_BULLET, {128, 128, 128, 255}}, // gray
+    {StyleRun::Type::LIST_NUMBER, {128, 128, 128, 255}}, // gray
+    {StyleRun::Type::TASK_MARKER_UNCHECKED, {128, 128, 128, 255}}, // gray
+    {StyleRun::Type::TASK_MARKER_CHECKED, {0, 150, 0, 255}},        // green
+    {StyleRun::Type::TABLE_HEADER, {0, 0, 0, 255}},                  // black (bold via font)
+    {StyleRun::Type::TABLE_CELL, {0, 0, 0, 255}},                    // black
+    {StyleRun::Type::TABLE_DELIMITER, {180, 180, 180, 255}},         // light gray (pipes)
+    {StyleRun::Type::TABLE_ROW_DELIMITER, {150, 150, 150, 255}},     // medium gray (---|---)
+    {StyleRun::Type::HEADING_1, {0, 102, 204, 255}},                 // blue (bold via font)
+    {StyleRun::Type::HEADING_2, {0, 102, 204, 255}},    // blue
+    {StyleRun::Type::HEADING_3, {0, 102, 204, 255}},    // blue
+    {StyleRun::Type::HEADING_4, {0, 102, 204, 255}},    // blue
+    {StyleRun::Type::HEADING_5, {0, 102, 204, 255}},    // blue
+    {StyleRun::Type::HEADING_6, {0, 102, 204, 255}},    // blue
+};

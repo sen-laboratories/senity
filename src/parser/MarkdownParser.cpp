@@ -1,5 +1,7 @@
 #include "MarkdownParser.h"
 #include "SyntaxHighlighter.h"
+#include "../common/Messages.h"
+
 #include <cstring>
 #include <algorithm>
 #include <stdio.h>
@@ -642,7 +644,7 @@ void MarkdownParser::ProcessNodeForOutline(TSNode node, int32 parentOffset)
 void MarkdownParser::BuildOutline()
 {
     fOutline.MakeEmpty();
-    fOutline.what = 'OUTL';  // Use 'what' field as requested
+    fOutline.what = MSG_OUTLINE;
     fOutline.AddString("type", "document");  // Type field for flavor
 
     if (!fTree) {
@@ -716,7 +718,7 @@ TSNode MarkdownParser::GetHeadingAtOffset(int32 offset) const
     }
 
     TSNode node = GetNodeAtOffset(offset);
-    
+
     // Walk up tree to find heading node
     while (!ts_node_is_null(node)) {
         const char* nodeType = ts_node_type(node);
@@ -725,53 +727,53 @@ TSNode MarkdownParser::GetHeadingAtOffset(int32 offset) const
         }
         node = ts_node_parent(node);
     }
-    
+
     return ts_null_node;
 }
 
 std::vector<TSNode> MarkdownParser::FindAllHeadings() const
 {
     std::vector<TSNode> headings;
-    
+
     if (!fTree) {
         return headings;
     }
-    
+
     TSNode root = ts_tree_root_node(fTree);
-    
+
     // Use tree-sitter's cursor for efficient traversal
     TSTreeCursor cursor = ts_tree_cursor_new(root);
-    
+
     bool descend = true;
     while (true) {
         if (descend) {
             TSNode node = ts_tree_cursor_current_node(&cursor);
             const char* nodeType = ts_node_type(node);
-            
+
             if (strcmp(nodeType, "atx_heading") == 0) {
                 headings.push_back(node);
             }
-            
+
             // Try to go to first child
             if (ts_tree_cursor_goto_first_child(&cursor)) {
                 descend = true;
                 continue;
             }
         }
-        
+
         // Try to go to next sibling
         if (ts_tree_cursor_goto_next_sibling(&cursor)) {
             descend = true;
             continue;
         }
-        
+
         // Go up and try next sibling
         if (!ts_tree_cursor_goto_parent(&cursor)) {
             break;
         }
         descend = false;
     }
-    
+
     ts_tree_cursor_delete(&cursor);
     return headings;
 }
@@ -781,58 +783,58 @@ TSNode MarkdownParser::FindParentHeading(int32 offset) const
     if (!fTree) {
         return ts_null_node;
     }
-    
+
     // Get all headings
     std::vector<TSNode> headings = FindAllHeadings();
-    
+
     // Find the current heading at offset (if any)
     TSNode currentHeading = GetHeadingAtOffset(offset);
-    int32 currentLevel = ts_node_is_null(currentHeading) 
-        ? 999 
+    int32 currentLevel = ts_node_is_null(currentHeading)
+        ? 999
         : GetHeadingLevelFromNode(currentHeading);
     int32 currentOffset = ts_node_is_null(currentHeading)
         ? offset
         : ts_node_start_byte(currentHeading);
-    
+
     // Walk backwards to find parent (heading with lower level before current)
     for (auto it = headings.rbegin(); it != headings.rend(); ++it) {
         TSNode heading = *it;
         int32 headingOffset = ts_node_start_byte(heading);
-        
+
         // Must be before current position
         if (headingOffset >= currentOffset) {
             continue;
         }
-        
+
         int32 level = GetHeadingLevelFromNode(heading);
         if (level < currentLevel) {
             return heading;
         }
     }
-    
+
     return ts_null_node;
 }
 
 std::vector<TSNode> MarkdownParser::FindSiblingHeadings(TSNode heading) const
 {
     std::vector<TSNode> siblings;
-    
+
     if (!fTree || ts_node_is_null(heading)) {
         return siblings;
     }
-    
+
     int32 targetLevel = GetHeadingLevelFromNode(heading);
     int32 headingOffset = ts_node_start_byte(heading);
-    
+
     // Get all headings
     std::vector<TSNode> allHeadings = FindAllHeadings();
-    
+
     // Find parent heading
     TSNode parent = FindParentHeading(headingOffset);
-    int32 parentOffset = ts_node_is_null(parent) 
-        ? -1 
+    int32 parentOffset = ts_node_is_null(parent)
+        ? -1
         : ts_node_start_byte(parent);
-    
+
     // Find next heading at parent level or higher (defines scope)
     int32 endOffset = INT32_MAX;
     if (parentOffset >= 0) {
@@ -848,11 +850,11 @@ std::vector<TSNode> MarkdownParser::FindSiblingHeadings(TSNode heading) const
             }
         }
     }
-    
+
     // Collect siblings (same level, same parent)
     for (const TSNode& node : allHeadings) {
         int32 nodeOffset = ts_node_start_byte(node);
-        
+
         // Must be after parent and before next parent-level heading
         if (nodeOffset > parentOffset && nodeOffset < endOffset) {
             int32 level = GetHeadingLevelFromNode(node);
@@ -861,7 +863,7 @@ std::vector<TSNode> MarkdownParser::FindSiblingHeadings(TSNode heading) const
             }
         }
     }
-    
+
     return siblings;
 }
 
@@ -870,27 +872,27 @@ void MarkdownParser::GetHeadingContext(int32 offset, BMessage* context) const
     if (!context || !fTree) {
         return;
     }
-    
+
     context->MakeEmpty();
     context->what = 'OUTL';
     context->AddString("type", "context");
-    
+
     // Get all headings
     std::vector<TSNode> allHeadings = FindAllHeadings();
-    
+
     // Build context stack (breadcrumb trail)
     std::vector<TSNode> contextStack;
-    
+
     for (const TSNode& heading : allHeadings) {
         int32 headingOffset = ts_node_start_byte(heading);
-        
+
         // Only consider headings before current offset
         if (headingOffset > offset) {
             break;
         }
-        
+
         int32 level = GetHeadingLevelFromNode(heading);
-        
+
         // Remove headings at same or deeper level from stack
         while (!contextStack.empty()) {
             int32 stackLevel = GetHeadingLevelFromNode(contextStack.back());
@@ -900,11 +902,11 @@ void MarkdownParser::GetHeadingContext(int32 offset, BMessage* context) const
                 break;
             }
         }
-        
+
         // Add this heading to stack
         contextStack.push_back(heading);
     }
-    
+
     // Build context message from stack
     for (const TSNode& heading : contextStack) {
         BMessage headingMsg;
@@ -918,16 +920,16 @@ void MarkdownParser::ExtractHeadingInfo(TSNode node, BMessage* msg, bool withTex
     if (!msg || ts_node_is_null(node)) {
         return;
     }
-    
+
     int32 level = GetHeadingLevelFromNode(node);
     int32 offset = ts_node_start_byte(node);
     int32 length = ts_node_end_byte(node) - offset;
-    
+
     msg->AddInt32("level", level);
     msg->AddInt32("offset", offset);
     msg->AddInt32("length", length);
     msg->AddInt32("line", GetLineForOffset(offset));
-    
+
     if (withText) {
         // Extract heading text
         TSNode contentNode = ts_node_child_by_field_name(node, "heading_content", 15);
@@ -956,19 +958,19 @@ int MarkdownParser::GetHeadingLevelFromNode(TSNode node) const
     if (ts_node_is_null(node)) {
         return 0;
     }
-    
+
     // Look for atx_h1..atx_h6 child
     uint32_t childCount = ts_node_child_count(node);
     for (uint32_t i = 0; i < childCount; i++) {
         TSNode child = ts_node_child(node, i);
         const char* childType = ts_node_type(child);
-        
-        if (strncmp(childType, "atx_h", 5) == 0 && 
+
+        if (strncmp(childType, "atx_h", 5) == 0 &&
             childType[5] >= '1' && childType[5] <= '6') {
             return childType[5] - '0';
         }
     }
-    
+
     return 1;  // Default to level 1
 }
 
