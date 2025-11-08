@@ -32,7 +32,13 @@ EditorView::EditorView(BHandler* parent)
 }
 
 EditorView::~EditorView() {
-    RemoveSelf();
+    if (LockLooper()) {
+        RemoveSelf();
+        delete fStatusBar;
+        delete fTextView;
+        delete fScrollView;
+        UnlockLooper();
+    }
     delete fColorDefs;
 }
 
@@ -65,6 +71,7 @@ void EditorView::MessageReceived(BMessage* message) {
         }
         case MSG_OUTLINE_SELECTED:
         {
+            printf("EditorView: got SELECTION from outline panel.\n");
             // Jump to selected heading
             message->PrintToStream();
 

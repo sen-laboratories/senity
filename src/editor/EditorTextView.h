@@ -65,9 +65,6 @@ public:
     BMessage* GetHeadingsInRange(int32 startOffset, int32 endOffset);
     BMessage* GetSiblingHeadings(int32 offset);
 
-    // Legacy method - kept for compatibility during transition
-    bool GetOutlineContextForOffset(int32 offset, BMessage* contextOutline);
-
 private:
     void ApplyStyles(int32 offset, int32 length);
     void UpdateStatus();

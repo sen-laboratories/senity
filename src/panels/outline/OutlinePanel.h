@@ -15,7 +15,7 @@ class EditorTextView;
 class OutlineItem : public BStringItem {
 public:
     OutlineItem(const char* text, int32 offset, uint32 level = 0)
-        : BStringItem(text, level, false)
+        : BStringItem(text, level, true)
         , fOffset(offset)
     {}
 
@@ -27,18 +27,18 @@ private:
 
 class OutlineListView : public BOutlineListView {
 public:
-    OutlineListView(BMessenger *target)
+    OutlineListView()
         : BOutlineListView("outline_listview")
-        , fSuppressSelectionMessage(false)
-        , fTargetMessenger(target)
+        , fSuppressSelectionChanged(false)
     {}
 
     virtual void SelectionChanged();
-    void SetSuppressSelectionMessage(bool suppress) { fSuppressSelectionMessage = suppress; }
+    void ExpandAll();
+    void CollapseAll();
+    void SuppressSelectionChanged(bool suppress) { fSuppressSelectionChanged = suppress; }
 
 private:
-    bool                fSuppressSelectionMessage;
-    BMessenger*         fTargetMessenger;
+    bool                fSuppressSelectionChanged;
 };
 
 class OutlinePanel : public BWindow {

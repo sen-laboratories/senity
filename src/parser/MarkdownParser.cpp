@@ -164,10 +164,6 @@ bool MarkdownParser::Parse(const char* markdownText)
         return false;
     }
 
-    if (fDebugEnabled) {
-        DumpTree();
-    }
-
     // Process the tree
     TSNode root = ts_tree_root_node(fTree);
     ProcessNode(root, 0);
@@ -272,16 +268,7 @@ bool MarkdownParser::ParseIncremental(const char* markdownText,
 
 void MarkdownParser::ProcessNode(TSNode node, int depth)
 {
-    if (fDebugEnabled && depth == 0) {
-        printf("\n=== Processing Parse Tree ===\n");
-    }
-
     const char* nodeType = ts_node_type(node);
-
-    // Debug output
-    if (fDebugEnabled) {
-        DebugPrintNode(node, depth);
-    }
 
     // Handle pipe characters (they're unnamed nodes)
     if (strcmp(nodeType, "|") == 0) {
@@ -600,7 +587,7 @@ void MarkdownParser::ProcessNodeForOutline(TSNode node, int32 parentOffset)
             text = GetNodeText(contentNode);
             text.Trim();
         } else {
-            text = "unknown heading";
+            text = "";  // new / empty header node
         }
 
         if (fDebugEnabled) {

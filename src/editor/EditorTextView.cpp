@@ -107,14 +107,19 @@ EditorTextView::EditorTextView(StatusBar *statusView, BHandler *editorHandler)
 
 EditorTextView::~EditorTextView()
 {
-    // Clean up user_data from all nodes
-    ClearHighlights();
+    if (LockLooper()) {
+        RemoveSelf();
+        // Clean up user_data from all nodes
+        ClearHighlights();
 
-    delete fMarkdownParser;
-    delete fSyntaxHighlighter;
-    delete fTextFont;
-    delete fLinkFont;
-    delete fCodeFont;
+        delete fMarkdownParser;
+        delete fSyntaxHighlighter;
+        delete fTextFont;
+        delete fLinkFont;
+        delete fCodeFont;
+
+        UnlockLooper();
+    }
 
     // Clean up highlight map (now mostly unused but keep for compatibility)
     if (fTextHighlights) {
@@ -778,21 +783,6 @@ void EditorTextView::UpdateStatus()
     updateSelection.AddInt32("offsetEnd", end);
 
     BMessenger(fEditorHandler).SendMessage(&updateSelection);
-}
-
-bool EditorTextView::GetOutlineContextForOffset(int32 offset, BMessage* contextOutline)
-{
-    if (!fMarkdownParser || !contextOutline) {
-        return false;
-    }
-
-    // Use the new fast TreeSitter-based method
-    fMarkdownParser->GetHeadingContext(offset, contextOutline);
-
-    // Check if we got any results
-    type_code type;
-    int32 count = 0;
-    return (contextOutline->GetInfo("heading", &type, &count) == B_OK && count > 0);
 }
 
 void EditorTextView::BuildContextMenu()

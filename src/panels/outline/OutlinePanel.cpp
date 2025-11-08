@@ -6,6 +6,7 @@
 #include "../../common/Messages.h"
 #include "../../editor/EditorTextView.h"
 
+#include <Application.h>
 #include <LayoutBuilder.h>
 #include <Messenger.h>
 #include <ScrollView.h>
@@ -14,28 +15,47 @@
 
 // OutlineListView implementation
 
+void OutlineListView::ExpandAll() {
+    for (int32 i = 0; i < FullListCountItems(); i++) {
+        BListItem* item = FullListItemAt(i);
+        if (ItemUnderAt(item, true, 0) != NULL) {   // it's a parent node
+            Expand(item);
+        }
+    }
+}
+
+void OutlineListView::CollapseAll() {
+    for (int32 i = 0; i < FullListCountItems(); i++) {
+        BListItem* item = FullListItemAt(i);
+        if (ItemUnderAt(item, true, 0) != NULL) {   // it's a parent node
+            Collapse(item);
+        }
+    }
+}
+
 void OutlineListView::SelectionChanged()
 {
-    BOutlineListView::SelectionChanged();
-
-    if (fSuppressSelectionMessage)
+    if (fSuppressSelectionChanged) {
+        printf("ignoring selection.\n");
         return;
+    }
 
-    int32 index = CurrentSelection();
+    int32 index = FullListCurrentSelection();
     if (index < 0)
         return;
 
     OutlineItem* item = dynamic_cast<OutlineItem*>(ItemAt(index));
-    if (!item)
+    if (!item) {
+        printf("could not get itemm at index %d\n", index);
         return;
+    }
 
     BMessage selectionMsg(MSG_OUTLINE_SELECTED);
     selectionMsg.AddInt32("offsetStart", item->Offset());
     selectionMsg.AddInt32("offsetEnd", item->Offset());
 
-    if (fTargetMessenger) {
-        fTargetMessenger->SendMessage(&selectionMsg);
-    }
+    SetSelectionMessage(new BMessage(selectionMsg));
+    BOutlineListView::SelectionChanged();
 }
 
 // OutlinePanel implementation
@@ -44,12 +64,10 @@ OutlinePanel::OutlinePanel(BRect frame, BMessenger* target)
     : BWindow(frame, "Outline", B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
               B_AUTO_UPDATE_SIZE_LIMITS | B_ASYNCHRONOUS_CONTROLS |
               B_NOT_ZOOMABLE | B_AVOID_FRONT | B_WILL_ACCEPT_FIRST_CLICK)
-    , fTargetMessenger(target)
 {
-    printf("OutlinePanel initializing...\n");
-
     // Create custom list view
-    fListView = new OutlineListView(target);
+    fListView = new OutlineListView();
+    fListView->SetTarget(*target);
 
     // Wrap in scroll view
     fScrollView = new BScrollView("outline_scroll", fListView,
@@ -59,12 +77,16 @@ OutlinePanel::OutlinePanel(BRect frame, BMessenger* target)
     BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
         .Add(fScrollView)
     .End();
-
-    printf("OutlinePanel initialized.\n");
 }
 
 OutlinePanel::~OutlinePanel()
 {
+    if (LockLooper()) {
+        delete fListView;
+        delete fScrollView;
+        delete fTargetMessenger;
+        UnlockLooper();
+    }
 }
 
 void OutlinePanel::MessageReceived(BMessage* message)
@@ -77,10 +99,10 @@ void OutlinePanel::MessageReceived(BMessage* message)
             bool show = message->GetBool("show");
             if (show) {
                 printf("OutlinePanel: SHOW outline panel.\n");
-                //Show();
+                Show();
             } else {
                 printf("OutlinePanel: HIDE outline panel.\n");
-                //Hide();
+                Hide();
             }
             break;
         }
@@ -88,6 +110,7 @@ void OutlinePanel::MessageReceived(BMessage* message)
         {
             BMessage outline;
             if (message->FindMessage("outline", &outline) == B_OK) {
+                printf("OutlinePanel: UPDATE outline.\n");
                 UpdateOutline(&outline);
             }
             break;
@@ -100,7 +123,7 @@ void OutlinePanel::MessageReceived(BMessage* message)
 
 bool OutlinePanel::QuitRequested()
 {
-    fTargetMessenger->SendMessage(MSG_OUTLINE_TOGGLE);
+    be_app_messenger.SendMessage(MSG_OUTLINE_TOGGLE);  // use MSG_PANEL_TOGGLE with unique ID
     return false;  // Don't actually quit, just hide
 }
 
@@ -109,14 +132,19 @@ void OutlinePanel::UpdateOutline(BMessage* outline)
     if (!outline) return;
 
     printf("OutlinePanel::UpdateOutline\n");
+    outline->PrintToStream();
 
-    fListView->MakeEmpty();
+    bool isFresh = fListView->FullListIsEmpty();
+
+    if (LockLooper()) {
+        fListView->MakeEmpty();
+        UnlockLooper();
+    }
 
     // Check if we have headings
-    type_code type;
     int32 count = 0;
-    if (outline->GetInfo("heading", &type, &count) != B_OK || count == 0) {
-        printf("No headings in outline\n");
+    if (outline->IsEmpty() || outline->GetInfo("heading", NULL, &count) != B_OK || count == 0) {
+        printf("document is empty or has no headings.\n");
         return;
     }
 
@@ -128,12 +156,8 @@ void OutlinePanel::UpdateOutline(BMessage* outline)
 
 void OutlinePanel::AddHeadingsFlat(BMessage* outline)
 {
-    type_code type;
     int32 count = 0;
-    outline->GetInfo("heading", &type, &count);
-
-    OutlineItem* parents[7] = {nullptr};  // H1-H6, index by level
-    int32 lastLevel = 0;
+    outline->GetInfo("heading", NULL, &count);
 
     for (int32 i = 0; i < count; i++) {
         BMessage heading;
@@ -153,43 +177,18 @@ void OutlinePanel::AddHeadingsFlat(BMessage* outline)
         // Create item with outline level (0-based for BOutlineListView)
         OutlineItem* item = new OutlineItem(text, offset, level - 1);
 
-        // Clear parent pointers for levels >= current level
-        for (int32 j = level; j <= 6; j++) {
-            parents[j] = nullptr;
-        }
-
-        // Find parent (first non-null parent at level < current)
-        OutlineItem* parent = nullptr;
-        for (int32 j = level - 1; j >= 1; j--) {
-            if (parents[j]) {
-                parent = parents[j];
-                break;
-            }
-        }
-
         // Add to tree
         if (LockLooper()) {
-            if (parent) {
-                fListView->AddUnder(item, parent);
-            } else {
-                fListView->AddItem(item);
-            }
+            fListView->AddItem(item);
             UnlockLooper();
         }
-        // This item becomes the parent for its level
-        parents[level] = item;
-        lastLevel = level;
     }
-
-    printf("OutlinePanel: Added all headings\n");
 }
 
 void OutlinePanel::HighlightCurrent(int32 offset)
 {
     if (!fListView)
         return;
-
-    fListView->SetSuppressSelectionMessage(true);
 
     // Find item closest to offset (last heading before or at offset)
     int32 bestIndex = -1;
@@ -214,12 +213,16 @@ void OutlinePanel::HighlightCurrent(int32 offset)
     // Select the item
     if (bestIndex >= 0) {
         if (LockLooper()) {
+            // don't send selection change event
+            fListView->SuppressSelectionChanged(true);
+
             fListView->Select(bestIndex);
             fListView->ScrollToSelection();
+
             UnlockLooper();
+            // Re-enable selection messages
+            fListView->SuppressSelectionChanged(false);
         }
     }
 
-    // Re-enable selection messages
-    fListView->SetSuppressSelectionMessage(false);
 }

@@ -99,8 +99,10 @@ MainWindow::MainWindow()
 	fSavePanel = new BFilePanel(B_SAVE_PANEL, &messenger, NULL, B_FILE_NODE, false);
 
     // Create outline panel (initially hidden)
+    BMessenger editorMessenger(fEditorView);
     BRect panelFrame(frame.left - 240.0, frame.top, frame.left - 12.0, frame.bottom);
-    fOutlinePanel = new OutlinePanel(panelFrame, &messenger);
+
+    fOutlinePanel = new OutlinePanel(panelFrame, &editorMessenger);
     fOutlinePanel->Show();
 
     ApplySettings(fSettings);
@@ -113,6 +115,12 @@ MainWindow::~MainWindow()
 	delete fOpenPanel;
 	delete fSavePanel;
     delete fEditorView;
+
+    if (fOutlinePanel && LockLooper()) {
+        delete fOutlinePanel;
+        UnlockLooper();
+    }
+    Quit();
 }
 
 void MainWindow::MessageReceived(BMessage* message)
@@ -206,7 +214,7 @@ void MainWindow::MessageReceived(BMessage* message)
         {
             // Called after text changes
             if (fOutlinePanel && !fOutlinePanel->IsHidden()) {
-                printf("Editor: UPDATE outline panel.\n");
+                printf("MainWindow: UPDATE outline panel.\n");
 
                 // get embedded outline from update event notification
                 BMessage outline;
@@ -222,7 +230,7 @@ void MainWindow::MessageReceived(BMessage* message)
         }
         case MSG_OUTLINE_SELECTED: {
             // forward to textview
-            printf("Editor: forward SELECTION from outline panel.\n");
+            printf("MainWindow: forward SELECTION from outline panel.\n");
             fEditorView->MessageReceived(message);
             break;
         }
