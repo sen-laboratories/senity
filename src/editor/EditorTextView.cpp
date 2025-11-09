@@ -107,19 +107,14 @@ EditorTextView::EditorTextView(StatusBar *statusView, BHandler *editorHandler)
 
 EditorTextView::~EditorTextView()
 {
-    if (LockLooper()) {
-        RemoveSelf();
-        // Clean up user_data from all nodes
-        ClearHighlights();
+    // Clean up user_data from all nodes
+    ClearHighlights();
 
-        delete fMarkdownParser;
-        delete fSyntaxHighlighter;
-        delete fTextFont;
-        delete fLinkFont;
-        delete fCodeFont;
-
-        UnlockLooper();
-    }
+    delete fMarkdownParser;
+    delete fSyntaxHighlighter;
+    delete fTextFont;
+    delete fLinkFont;
+    delete fCodeFont;
 
     // Clean up highlight map (now mostly unused but keep for compatibility)
     if (fTextHighlights) {

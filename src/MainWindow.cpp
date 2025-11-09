@@ -114,13 +114,6 @@ MainWindow::~MainWindow()
 
 	delete fOpenPanel;
 	delete fSavePanel;
-    delete fEditorView;
-
-    if (fOutlinePanel && LockLooper()) {
-        delete fOutlinePanel;
-        UnlockLooper();
-    }
-    Quit();
 }
 
 void MainWindow::MessageReceived(BMessage* message)

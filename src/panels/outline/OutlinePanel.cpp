@@ -36,7 +36,7 @@ void OutlineListView::CollapseAll() {
 void OutlineListView::SelectionChanged()
 {
     if (fSuppressSelectionChanged) {
-        printf("ignoring selection.\n");
+        printf("ignoring selection change.\n");
         return;
     }
 
@@ -44,11 +44,13 @@ void OutlineListView::SelectionChanged()
     if (index < 0)
         return;
 
-    OutlineItem* item = dynamic_cast<OutlineItem*>(ItemAt(index));
+    OutlineItem* item = dynamic_cast<OutlineItem*>(FullListItemAt(index));
     if (!item) {
         printf("could not get itemm at index %d\n", index);
         return;
     }
+
+    printf("Outline: sending selection update msg.\n");
 
     BMessage selectionMsg(MSG_OUTLINE_SELECTED);
     selectionMsg.AddInt32("offsetStart", item->Offset());
@@ -81,12 +83,6 @@ OutlinePanel::OutlinePanel(BRect frame, BMessenger* target)
 
 OutlinePanel::~OutlinePanel()
 {
-    if (LockLooper()) {
-        delete fListView;
-        delete fScrollView;
-        delete fTargetMessenger;
-        UnlockLooper();
-    }
 }
 
 void OutlinePanel::MessageReceived(BMessage* message)
@@ -124,7 +120,7 @@ void OutlinePanel::MessageReceived(BMessage* message)
 bool OutlinePanel::QuitRequested()
 {
     be_app_messenger.SendMessage(MSG_OUTLINE_TOGGLE);  // use MSG_PANEL_TOGGLE with unique ID
-    return false;  // Don't actually quit, just hide
+    return true;
 }
 
 void OutlinePanel::UpdateOutline(BMessage* outline)
@@ -132,11 +128,9 @@ void OutlinePanel::UpdateOutline(BMessage* outline)
     if (!outline) return;
 
     printf("OutlinePanel::UpdateOutline\n");
-    outline->PrintToStream();
-
-    bool isFresh = fListView->FullListIsEmpty();
 
     if (LockLooper()) {
+        fListView->SuppressSelectionChanged(true);
         fListView->MakeEmpty();
         UnlockLooper();
     }
@@ -152,6 +146,7 @@ void OutlinePanel::UpdateOutline(BMessage* outline)
 
     // Use simple flat iteration with parent tracking
     AddHeadingsFlat(outline);
+    fListView->SuppressSelectionChanged(false);
 }
 
 void OutlinePanel::AddHeadingsFlat(BMessage* outline)
@@ -190,6 +185,8 @@ void OutlinePanel::HighlightCurrent(int32 offset)
     if (!fListView)
         return;
 
+    printf("highlight current outline item.\n");
+
     // Find item closest to offset (last heading before or at offset)
     int32 bestIndex = -1;
     int32 bestOffset = -1;
@@ -215,13 +212,22 @@ void OutlinePanel::HighlightCurrent(int32 offset)
         if (LockLooper()) {
             // don't send selection change event
             fListView->SuppressSelectionChanged(true);
-
             fListView->Select(bestIndex);
+
+            // expand item if collapsed
+            BListItem* item = fListView->FullListItemAt(bestIndex);
+
+            if (! item->IsExpanded()) {
+                if (LockLooper()) {
+                    fListView->Expand(item);
+                    UnlockLooper();
+                }
+            }
             fListView->ScrollToSelection();
 
-            UnlockLooper();
             // Re-enable selection messages
             fListView->SuppressSelectionChanged(false);
+            UnlockLooper();
         }
     }
 

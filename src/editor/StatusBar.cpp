@@ -53,15 +53,6 @@ StatusBar::StatusBar() : BView("status_bar", 0) {
 }
 
 StatusBar::~StatusBar() {
-    if (LockLooper()) {
-        RemoveSelf();
-        delete fLine;
-        delete fColumn;
-        delete fOffset;
-        delete fSelection;
-        delete fOutline;
-        UnlockLooper();
-   }
 }
 
 void StatusBar::UpdatePosition(int32 offset, int32 line, int32 column) {

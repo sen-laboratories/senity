@@ -32,13 +32,6 @@ EditorView::EditorView(BHandler* parent)
 }
 
 EditorView::~EditorView() {
-    if (LockLooper()) {
-        RemoveSelf();
-        delete fStatusBar;
-        delete fTextView;
-        delete fScrollView;
-        UnlockLooper();
-    }
     delete fColorDefs;
 }
 

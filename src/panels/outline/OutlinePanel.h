@@ -32,13 +32,14 @@ public:
         , fSuppressSelectionChanged(false)
     {}
 
-    virtual void SelectionChanged();
     void ExpandAll();
     void CollapseAll();
+    virtual void SelectionChanged();
+
     void SuppressSelectionChanged(bool suppress) { fSuppressSelectionChanged = suppress; }
 
 private:
-    bool                fSuppressSelectionChanged;
+    bool    fSuppressSelectionChanged;
 };
 
 class OutlinePanel : public BWindow {
@@ -55,7 +56,6 @@ public:
 private:
     void AddHeadingsFlat(BMessage* outline);
 
-    BMessenger*         fTargetMessenger;
     BScrollView*        fScrollView;
     OutlineListView*    fListView;
 };
