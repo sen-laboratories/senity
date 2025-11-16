@@ -72,7 +72,6 @@ LIBS =  be localestub tracker \
 		tree-sitter-rust \
 		tree-sitter-go \
 		spdlog \
-		fmt \
 		$(STDCPPLIBS)
 
 #	Specify additional paths to directories following the standard libXXX.so
@@ -85,7 +84,7 @@ LIBPATHS = $(HOME)/config/non-packaged/lib
 #	Additional paths to look for system headers. These use the form
 #	"#include <header>". Directories that contain the files in SRCS are
 #	NOT auto-included here.
-SYSTEM_INCLUDE_PATHS = $(shell findpaths -e B_FIND_PATH_HEADERS_DIRECTORY && findpaths -e B_FIND_PATH_HEADERS_DIRECTORY private/interface)
+SYSTEM_INCLUDE_PATHS = $(shell findpaths -e B_FIND_PATH_HEADERS_DIRECTORY && findpaths -e B_FIND_PATH_DEVELOP_HEADERS_DIRECTORY private/interface)
 
 #	Additional paths paths to look for local headers. These use the form
 #	#include "header". Directories that contain the files in SRCS are
@@ -109,7 +108,7 @@ LOCALES =
 #	use. For example, setting DEFINES to "DEBUG=1" will cause the compiler
 #	option "-DDEBUG=1" to be used. Setting DEFINES to "DEBUG" would pass
 #	"-DDEBUG" on the compiler's command line.
-DEFINES =
+DEFINES = SPDLOG_USE_STD_FORMAT
 
 #	Specify the warning level. Either NONE (suppress all warnings),
 #	ALL (enable all warnings), or leave blank (enable default warnings).

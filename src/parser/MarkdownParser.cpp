@@ -1,12 +1,16 @@
+/*
+ * Copyright 2024-2025, Gregor B. Rosenauer <gregor.rosenauer@gmail.com>
+ * All rights reserved. Distributed under the terms of the MIT license.
+ */
+
 #include "MarkdownParser.h"
 #include "SyntaxHighlighter.h"
 #include "../common/Messages.h"
 
 #include <cstring>
-#include <algorithm>
+#include <format>
 #include <string>
 #include <spdlog/spdlog.h>
-#include <fmt/format.h>
 
 // Unicode symbols for better visual presentation
 static const char* UNICODE_BULLET = "•";           // U+2022 BULLET
@@ -334,8 +338,8 @@ void MarkdownParser::ProcessNode(TSNode node, int depth)
     StyleRun::Type styleType = GetStyleTypeForNode(node);
 
     if (fDebugEnabled && (strcmp(nodeType, "pipe_table_cell") == 0)) {
-        spdlog::debug("  Cell [{},{}) styleType={} ({})", startByte, endByte,
-               styleType, styleType == StyleRun::Type::TABLE_HEADER ? "TABLE_HEADER" :
+        spdlog::debug("  Cell [{},{}) styleType={}", startByte, endByte,
+                         styleType == StyleRun::Type::TABLE_HEADER ? "TABLE_HEADER" :
                          styleType == StyleRun::Type::TABLE_CELL ? "TABLE_CELL" : "OTHER");
     }
 
@@ -1009,32 +1013,6 @@ void MarkdownParser::ApplySyntaxHighlighting(int32 codeOffset, int32 codeLength,
 
 // Debug functions
 
-void MarkdownParser::DebugPrintNode(TSNode node, int depth) const
-{
-    std::string indent(depth * 2, ' ');
-
-    const char* type = ts_node_type(node);
-    uint32_t start = ts_node_start_byte(node);
-    uint32_t end = ts_node_end_byte(node);
-    bool named = ts_node_is_named(node);
-
-    std::string output = fmt::format("{}{} [{}, {}) {}", indent, type, start, end, named ? "named" : "");
-
-    // Show text for small nodes
-    if (end - start <= 40 && fSourceText) {
-        output += " \"";
-        for (uint32_t i = start; i < end; i++) {
-            char c = fSourceText[i];
-            if (c == '\n') output += "\\n";
-            else if (c == '\t') output += "\\t";
-            else output += c;
-        }
-        output += "\"";
-    }
-
-    spdlog::debug("{}", output);
-}
-
 void MarkdownParser::DumpTree() const
 {
     if (!fTree) {
@@ -1070,17 +1048,17 @@ void MarkdownParser::DumpStyleRuns() const
         const char* typeName = (run.type < sizeof(typeNames)/sizeof(typeNames[0]))
                               ? typeNames[run.type] : "UNKNOWN";
 
-        std::string output = fmt::format("  [{}] offset={}, len={}, type={}",
+        std::string output = std::format("  [{}] offset={}, len={}, type={}",
                (int)i, run.offset, run.length, typeName);
 
         if (!run.language.IsEmpty()) {
-            output += fmt::format(", lang={}", run.language.String());
+            output += std::format(", lang={}", run.language.String());
         }
         if (!run.url.IsEmpty()) {
-            output += fmt::format(", url={}", run.url.String());
+            output += std::format(", url={}", run.url.String());
         }
         if (!run.text.IsEmpty()) {
-            output += fmt::format(", text='{}'", run.text.String());
+            output += std::format(", text='{}'", run.text.String());
         }
 
         // Show snippet
