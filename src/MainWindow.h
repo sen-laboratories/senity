@@ -16,26 +16,24 @@
 class MainWindow : public BWindow
 {
 public:
-							MainWindow();
+							MainWindow(const BMessage* settings);
 	virtual					~MainWindow();
 
 	virtual void			MessageReceived(BMessage* msg);
+    BMessage*               GetWindowSettings() { return fSettings; };
 
 private:
-    BMenuBar*		BuildMenu();
+    void                    ApplySettings(BMessage* settings);
+    BMenuBar*		        BuildMenu();
 
-    status_t		LoadSettings(BMessage* settings);
-    status_t		SaveSettings(BMessage* settings);
-    void            ApplySettings(BMessage* settings);
-    BMessage*       fSettings;
-
-    BMenuItem*		fSaveMenuItem;
+    BMessage*               fSettings;
+    BMenuItem*		        fSaveMenuItem;
     // panels
-    BMenuItem*      fOutlinePanelItem;
+    BMenuItem*              fOutlinePanelItem;
 
-    BFilePanel*		fOpenPanel;
-    BFilePanel*		fSavePanel;
-    OutlinePanel*   fOutlinePanel;
+    BFilePanel*		        fOpenPanel;
+    BFilePanel*		        fSavePanel;
+    OutlinePanel*           fOutlinePanel;
 
-    EditorView*     fEditorView;
+    EditorView*             fEditorView;
 };

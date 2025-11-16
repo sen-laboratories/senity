@@ -15,5 +15,10 @@ public:
 	virtual void			AboutRequested();
 
 private:
+    status_t	        	LoadSettings(BMessage* settings);
+    status_t		        SaveSettings(BMessage* settings);
+    void                    ApplySettings(BMessage* settings);
+
+    BMessage*               fSettings;
 };
 

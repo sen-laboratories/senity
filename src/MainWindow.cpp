@@ -9,7 +9,6 @@
 #include <Application.h>
 #include <Catalog.h>
 #include <File.h>
-#include <FindDirectory.h>
 #include <LayoutBuilder.h>
 #include <Menu.h>
 #include <MenuBar.h>
@@ -20,8 +19,6 @@
 
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "Window"
-
-static const char* kSettingsFile = "senity_settings";
 
 const char* testMarkdownText = R"(# Welcome to SENity
 
@@ -62,7 +59,7 @@ def hello_world():
 - Fast incremental parsing
 )";
 
-MainWindow::MainWindow()
+MainWindow::MainWindow(const BMessage* settings)
 	:
 	BWindow(BRect(100.0, 100.0, 260.0, 480.0), B_TRANSLATE("New Note"), B_DOCUMENT_WINDOW,
 		B_ASYNCHRONOUS_CONTROLS | B_QUIT_ON_WINDOW_CLOSE)
@@ -75,12 +72,7 @@ MainWindow::MainWindow()
         .Add(menuBar)
         .Add(fEditorView);
 
-    fSettings = new BMessage(MSG_SETTINGS);
-	status_t status = LoadSettings(fSettings);
-
-    if (status != B_OK) {
-        spdlog::warn("error loading settings, using defaults.");
-    }
+    fSettings = new BMessage(*settings);
 
 	BRect frame;
 	if (fSettings->FindRect("main_window_rect", &frame) == B_OK) {
@@ -110,10 +102,18 @@ MainWindow::MainWindow()
 
 MainWindow::~MainWindow()
 {
-	SaveSettings(fSettings);
-
 	delete fOpenPanel;
 	delete fSavePanel;
+}
+
+void MainWindow::ApplySettings(BMessage* settings)
+{
+    spdlog::debug("Apply window settings...");
+
+    bool show = settings->GetBool(CONF_PANEL_OUTLINE_SHOW);
+	fOutlinePanelItem->SetMarked(show);
+    if (!show)
+        fOutlinePanel->Hide();
 }
 
 void MainWindow::MessageReceived(BMessage* message)
@@ -234,6 +234,11 @@ void MainWindow::MessageReceived(BMessage* message)
 
             break;
         }
+        case MSG_SETTINGS_CHANGED: {
+            spdlog::debug("updating settings...\n");
+            *fSettings = *message;
+            break;
+        }
 		default:
 		{
 			BWindow::MessageReceived(message);
@@ -286,54 +291,4 @@ BMenuBar* MainWindow::BuildMenu()
 	menuBar->AddItem(menu);
 
 	return menuBar;
-}
-
-status_t MainWindow::LoadSettings(BMessage* settings)
-{
-	BPath path;
-	status_t status;
-	status = find_directory(B_USER_SETTINGS_DIRECTORY, &path);
-	if (status != B_OK)
-		return status;
-
-	status = path.Append(kSettingsFile);
-	if (status != B_OK)
-		return status;
-
-	BFile file;
-	status = file.SetTo(path.Path(), B_READ_ONLY);
-	if (status != B_OK)
-		return status;
-
-	return settings->Unflatten(&file);
-}
-
-status_t MainWindow::SaveSettings(BMessage* settings)
-{
-	BPath path;
-	status_t status = find_directory(B_USER_SETTINGS_DIRECTORY, &path);
-	if (status != B_OK)
-		return status;
-
-	status = path.Append(kSettingsFile);
-	if (status != B_OK)
-		return status;
-
-	BFile file;
-	status = file.SetTo(path.Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
-	if (status != B_OK)
-		return status;
-
-	return settings->Flatten(&file);
-}
-
-void MainWindow::ApplySettings(BMessage* settings)
-{
-    spdlog::debug("Apply settings...");
-    settings->PrintToStream();
-
-    bool show = settings->GetBool(CONF_PANEL_OUTLINE_SHOW);
-	fOutlinePanelItem->SetMarked(show);
-    if (!show)
-        fOutlinePanel->Hide();
 }

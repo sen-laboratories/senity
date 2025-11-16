@@ -24,7 +24,6 @@ MarkdownParser::MarkdownParser()
     , fSourceText(nullptr)
     , fSourceCopy(nullptr)
     , fSyntaxHighlighter(nullptr)
-    , fDebugEnabled(true)
     , fUseUnicodeSymbols(true)
 {
     // Create tree-sitter parser for block-level markdown
@@ -142,9 +141,7 @@ void MarkdownParser::InitializeDefaultStyles()
 bool MarkdownParser::Parse(const char* markdownText)
 {
     if (!markdownText || !fParser) {
-        if (fDebugEnabled) {
-            spdlog::error("Invalid input or parser not initialized");
-        }
+        spdlog::error("Invalid input or parser not initialized");
         return false;
     }
 
@@ -156,17 +153,13 @@ bool MarkdownParser::Parse(const char* markdownText)
     strcpy(fSourceCopy, markdownText);
     fSourceText = fSourceCopy;
 
-    if (fDebugEnabled) {
-        spdlog::debug("Parsing Markdown ({} bytes)", len);
-    }
+    spdlog::debug("Parsing Markdown ({} bytes)", len);
 
     // Parse with tree-sitter
     fTree = ts_parser_parse_string(fParser, nullptr, fSourceText, len);
 
     if (!fTree) {
-        if (fDebugEnabled) {
-            spdlog::error("Failed to create parse tree");
-        }
+        spdlog::error("Failed to create parse tree");
         return false;
     }
 
@@ -175,12 +168,6 @@ bool MarkdownParser::Parse(const char* markdownText)
     ProcessNode(root, 0);
 
     BuildOutline();
-
-    if (fDebugEnabled) {
-        DumpStyleRuns();
-        DumpOutline();
-    }
-
     return true;
 }
 
@@ -192,19 +179,15 @@ bool MarkdownParser::ParseIncremental(const char* markdownText,
 {
     if (!markdownText || !fParser || !fTree) {
         // No previous tree, do full parse
-        if (fDebugEnabled) {
-            spdlog::debug("No previous tree, doing full parse");
-        }
+        spdlog::debug("No previous tree, doing full parse");
         return Parse(markdownText);
     }
 
-    if (fDebugEnabled) {
-        spdlog::debug("Incremental Parse");
-        spdlog::debug("Edit: offset={}, oldLen={}, newLen={}", editOffset, oldLength, newLength);
-        spdlog::debug("Start: line={}, col={}", startLine, startColumn);
-        spdlog::debug("OldEnd: line={}, col={}", oldEndLine, oldEndColumn);
-        spdlog::debug("NewEnd: line={}, col={}", newEndLine, newEndColumn);
-    }
+    spdlog::debug("Incremental Parse");
+    spdlog::debug("Edit: offset={}, oldLen={}, newLen={}", editOffset, oldLength, newLength);
+    spdlog::debug("Start: line={}, col={}", startLine, startColumn);
+    spdlog::debug("OldEnd: line={}, col={}", oldEndLine, oldEndColumn);
+    spdlog::debug("NewEnd: line={}, col={}", newEndLine, newEndColumn);
 
     // Create edit descriptor for tree-sitter
     TSInputEdit edit;
@@ -234,23 +217,8 @@ bool MarkdownParser::ParseIncremental(const char* markdownText,
     TSTree* newTree = ts_parser_parse_string(fParser, fTree, fSourceText, len);
 
     if (!newTree) {
-        if (fDebugEnabled) {
-            spdlog::error("Failed to create new tree");
-        }
+        spdlog::error("Failed to create new tree");
         return false;
-    }
-
-    // Check what changed
-    if (fDebugEnabled) {
-        TSRange* ranges;
-        uint32_t range_count;
-        ranges = ts_tree_get_changed_ranges(fTree, newTree, &range_count);
-        spdlog::debug("Changed ranges: {}", range_count);
-        for (uint32_t i = 0; i < range_count; i++) {
-            spdlog::debug("  Range {}: [{}, {})", i,
-                   ranges[i].start_byte, ranges[i].end_byte);
-        }
-        free(ranges);
     }
 
     // Replace old tree
@@ -264,11 +232,6 @@ bool MarkdownParser::ParseIncremental(const char* markdownText,
 
     // Rebuild outline
     BuildOutline();
-
-    if (fDebugEnabled) {
-        DumpStyleRuns();
-    }
-
     return true;
 }
 
@@ -336,12 +299,6 @@ void MarkdownParser::ProcessNode(TSNode node, int depth)
 
     // Determine style based on node type
     StyleRun::Type styleType = GetStyleTypeForNode(node);
-
-    if (fDebugEnabled && (strcmp(nodeType, "pipe_table_cell") == 0)) {
-        spdlog::debug("  Cell [{},{}) styleType={}", startByte, endByte,
-                         styleType == StyleRun::Type::TABLE_HEADER ? "TABLE_HEADER" :
-                         styleType == StyleRun::Type::TABLE_CELL ? "TABLE_CELL" : "OTHER");
-    }
 
     if (styleType != StyleRun::Type::NORMAL) {
         // Extract additional info for special nodes
@@ -486,6 +443,18 @@ StyleRun::Type MarkdownParser::GetStyleTypeForNode(TSNode node) const
         return StyleRun::Type::STRONG;
     }
 
+    // Underline
+    if (strcmp(type, "underscore") == 0) {
+        spdlog::debug("underline text detected");
+        return StyleRun::Type::UNDERLINE;
+    }
+
+    // Strikethrough
+    if (strcmp(type, "strikethrough") == 0) {
+        spdlog::debug("strikethrough text detected");
+        return StyleRun::Type::STRIKETHROUGH;
+    }
+
     // Links
     if (strcmp(type, "inline_link") == 0 || strcmp(type, "shortcut_link") == 0) {
         return StyleRun::Type::LINK;
@@ -510,7 +479,6 @@ StyleRun::Type MarkdownParser::GetStyleTypeForNode(TSNode node) const
     }
 
     // List markers handled in ProcessNode
-
     return StyleRun::Type::NORMAL;
 }
 
@@ -596,10 +564,8 @@ void MarkdownParser::ProcessNodeForOutline(TSNode node, int32 parentOffset)
             text = "";  // new / empty header node
         }
 
-        if (fDebugEnabled) {
-            spdlog::debug("Found heading L{} at {}: '{}' (parent: {})", level,
-                   currentOffset, text.String(), parentOffset);
-        }
+        spdlog::debug("Found heading L{} at {}: '{}' (parent: {})", level,
+               currentOffset, text.String(), parentOffset);
 
         BMessage heading;
         heading.AddString("text", text);
@@ -628,9 +594,7 @@ void MarkdownParser::BuildOutline()
     fOutline.AddString("type", "document");  // Type field for flavor
 
     if (!fTree) {
-        if (fDebugEnabled) {
-            spdlog::debug("No tree available");
-        }
+        spdlog::debug("No tree available");
         return;
     }
 
@@ -1009,78 +973,6 @@ void MarkdownParser::ApplySyntaxHighlighting(int32 codeOffset, int32 codeLength,
         // Create style run at the correct offset (relative to document)
         CreateStyleRun(codeOffset + token.offset, token.length, styleType);
     }
-}
-
-// Debug functions
-
-void MarkdownParser::DumpTree() const
-{
-    if (!fTree) {
-        spdlog::debug("No parse tree available");
-        return;
-    }
-
-    spdlog::debug("=== Parse Tree ===");
-    TSNode root = ts_tree_root_node(fTree);
-
-    // Use tree-sitter's built-in S-expression printer
-    char* sexp = ts_node_string(root);
-    spdlog::debug("{}", sexp);
-    free(sexp);
-}
-
-void MarkdownParser::DumpStyleRuns() const
-{
-    spdlog::debug("=== Style Runs ({}) ===", fStyleRuns.size());
-
-    const char* typeNames[] = {
-        "NORMAL", "HEADING_1", "HEADING_2", "HEADING_3", "HEADING_4", "HEADING_5", "HEADING_6",
-        "CODE_INLINE", "CODE_BLOCK", "EMPHASIS", "STRONG", "UNDERLINE", "STRIKETHROUGH",
-        "LINK", "LINK_URL", "LIST_BULLET", "LIST_NUMBER", "BLOCKQUOTE",
-        "TASK_UNCHECKED", "TASK_CHECKED",
-        "TABLE_HEADER", "TABLE_CELL", "TABLE_DELIMITER", "TABLE_ROW_DELIMITER",
-        "SYNTAX_KEYWORD", "SYNTAX_TYPE", "SYNTAX_FUNCTION",
-        "SYNTAX_STRING", "SYNTAX_NUMBER", "SYNTAX_COMMENT", "SYNTAX_OPERATOR"
-    };
-
-    for (size_t i = 0; i < fStyleRuns.size(); i++) {
-        const StyleRun& run = fStyleRuns[i];
-        const char* typeName = (run.type < sizeof(typeNames)/sizeof(typeNames[0]))
-                              ? typeNames[run.type] : "UNKNOWN";
-
-        std::string output = std::format("  [{}] offset={}, len={}, type={}",
-               (int)i, run.offset, run.length, typeName);
-
-        if (!run.language.IsEmpty()) {
-            output += std::format(", lang={}", run.language.String());
-        }
-        if (!run.url.IsEmpty()) {
-            output += std::format(", url={}", run.url.String());
-        }
-        if (!run.text.IsEmpty()) {
-            output += std::format(", text='{}'", run.text.String());
-        }
-
-        // Show snippet
-        if (fSourceText && run.length <= 40) {
-            output += " \"";
-            for (int32 j = 0; j < run.length && j < 40; j++) {
-                char c = fSourceText[run.offset + j];
-                if (c == '\n') output += "\\n";
-                else if (c == '\t') output += "\\t";
-                else output += c;
-            }
-            output += "\"";
-        }
-
-        spdlog::debug("{}", output);
-    }
-}
-
-void MarkdownParser::DumpOutline() const
-{
-    spdlog::debug("=== Outline ===");
-    fOutline.PrintToStream();
 }
 
 const char* MarkdownParser::GetListBulletSymbol() const

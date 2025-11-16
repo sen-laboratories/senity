@@ -82,13 +82,6 @@ public:
     // Syntax highlighting
     void SetSyntaxHighlighter(SyntaxHighlighter* highlighter);
 
-    // Debug output
-    void SetDebugEnabled(bool enabled) { fDebugEnabled = enabled; }
-    bool IsDebugEnabled() const { return fDebugEnabled; }
-    void DumpTree() const;
-    void DumpStyleRuns() const;
-    void DumpOutline() const;
-
     // Unicode symbol replacement
     void SetUseUnicodeSymbols(bool use) { fUseUnicodeSymbols = use; }
     bool GetUseUnicodeSymbols() const { return fUseUnicodeSymbols; }
@@ -98,11 +91,11 @@ public:
 
 private:
     // Tree-sitter state
-    TSParser* fParser;
-    TSParser* fInlineParser;  // For inline markdown (emphasis, strong, links, etc.)
-    TSTree* fTree;
+    TSParser*   fParser;
+    TSParser*   fInlineParser;  // For inline markdown (emphasis, strong, links, etc.)
+    TSTree*     fTree;
     const char* fSourceText;  // We need to keep a copy for tree-sitter
-    char* fSourceCopy;
+    char*       fSourceCopy;
 
     // Output
     std::vector<StyleRun> fStyleRuns;
@@ -117,7 +110,6 @@ private:
     SyntaxHighlighter* fSyntaxHighlighter;
 
     // Options
-    bool fDebugEnabled;
     bool fUseUnicodeSymbols;
 
     // Processing

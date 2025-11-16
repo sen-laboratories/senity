@@ -12,7 +12,9 @@
  */
 
 // settings
-static const uint32 MSG_SETTINGS  = 'Conf';
+static const uint32 MSG_SETTINGS          = 'Conf';
+static const uint32 MSG_SETTINGS_CHANGED  = 'Cfgc';
+
 // config keys
 #define CONF_PANEL_OUTLINE_SHOW     "conf:panel:outline:show"
 
