@@ -16,7 +16,7 @@
 #include <Path.h>
 #include <View.h>
 
-#include <cstdio>
+#include <spdlog/spdlog.h>
 
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "Window"
@@ -79,7 +79,7 @@ MainWindow::MainWindow()
 	status_t status = LoadSettings(fSettings);
 
     if (status != B_OK) {
-        printf("error loading settings, using defaults.");
+        spdlog::warn("error loading settings, using defaults.");
     }
 
 	BRect frame;
@@ -122,7 +122,7 @@ void MainWindow::MessageReceived(BMessage* message)
 		case B_SIMPLE_DATA:
 		case B_REFS_RECEIVED:
 		{
-            printf("handing simple data/refs received msg.\n");
+            spdlog::debug("handling simple data/refs received msg.");
 
 			entry_ref ref;
             status_t  result;
@@ -140,7 +140,7 @@ void MainWindow::MessageReceived(BMessage* message)
             }
             off_t size;
             if ((result = file.GetSize(&size)) != B_OK) {
-                fprintf(stderr, "could not get size for file: %s\n", strerror(result));
+                spdlog::error("could not get size for file: {}", strerror(result));
                 break;
             }
 
@@ -163,7 +163,7 @@ void MainWindow::MessageReceived(BMessage* message)
 				BEntry entry(&directory, name);
 				BPath path = BPath(&entry);
 
-				printf("would save to path: %s\n", path.Path());
+				spdlog::debug("would save to path: {}", path.Path());
 			}
 
             break;
@@ -192,7 +192,7 @@ void MainWindow::MessageReceived(BMessage* message)
         // panels
         case MSG_OUTLINE_TOGGLE:
         {
-            printf("toggle outline...\n");
+            spdlog::debug("toggle outline...");
             bool show = ! fSettings->GetBool(CONF_PANEL_OUTLINE_SHOW);
             fSettings->SetBool(CONF_PANEL_OUTLINE_SHOW, show);
 
@@ -207,7 +207,7 @@ void MainWindow::MessageReceived(BMessage* message)
         {
             // Called after text changes
             if (fOutlinePanel && !fOutlinePanel->IsHidden()) {
-                printf("MainWindow: UPDATE outline panel.\n");
+                spdlog::debug("UPDATE outline panel.");
 
                 // get embedded outline from update event notification
                 BMessage outline;
@@ -216,14 +216,14 @@ void MainWindow::MessageReceived(BMessage* message)
                 if (result == B_OK) {
                     fOutlinePanel->UpdateOutline(&outline);
                 } else {
-                    printf("invalid outline update, no outline found!\n");
+                    spdlog::warn("invalid outline update, no outline found!");
                 }
             }
             break;
         }
         case MSG_OUTLINE_SELECTED: {
             // forward to textview
-            printf("MainWindow: forward SELECTION from outline panel.\n");
+            spdlog::debug("forward SELECTION from outline panel.");
             fEditorView->MessageReceived(message);
             break;
         }
@@ -329,7 +329,7 @@ status_t MainWindow::SaveSettings(BMessage* settings)
 
 void MainWindow::ApplySettings(BMessage* settings)
 {
-    printf("Apply settings...\n");
+    spdlog::debug("Apply settings...");
     settings->PrintToStream();
 
     bool show = settings->GetBool(CONF_PANEL_OUTLINE_SHOW);

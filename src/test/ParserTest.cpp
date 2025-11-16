@@ -1,7 +1,7 @@
 #include "../MarkdownParser.h"
 
 #include "ParserTest.h"
-#include <stdio.h>
+#include <spdlog/spdlog.h>
 
 const char* kApplicationSignature = "application/x-vnd.senlabs-senity";
 
@@ -68,7 +68,7 @@ ParserTest::ParserTest()
 
     // Parse the test markdown
     if (!parser.Parse(TEST_MARKDOWN)) {
-        printf("ERROR: Failed to parse markdown\n");
+        spdlog::error("Failed to parse markdown");
         return;
     }
 
@@ -121,7 +121,7 @@ int main() {
     int32 newLength = 9;
 
     if (!parser.ParseIncremental(MODIFIED, editOffset, oldLength, newLength)) {
-        printf("ERROR: Failed to incrementally parse\n");
+        spdlog::error("Failed to incrementally parse");
         return;
     }
 
@@ -131,7 +131,7 @@ int main() {
     int32 headingCount = 0;
     outline->GetInfo("heading", NULL, &headingCount);
 
-    printf("\nOutline has %d headings:\n", headingCount);
+    spdlog::info("Outline has {} headings:", headingCount);
     for (int32 i = 0; i < headingCount; i++) {
         BMessage heading;
         if (outline->FindMessage("heading", i, &heading) == B_OK) {
@@ -141,7 +141,7 @@ int main() {
             heading.FindInt32("level", &level);
             heading.FindInt32("offset", &offset);
 
-            printf("  %d. Level %d at byte %d: \"%s\"\n",
+            spdlog::info("  {}. Level {} at byte {}: \"{}\"",
                    i + 1, level, offset, text.String());
         }
     }
@@ -149,13 +149,13 @@ int main() {
     PrintSeparator("ACCESSING STYLE RUNS");
 
     const std::vector<StyleRun>& runs = parser.GetStyleRuns();
-    printf("\nFound %zu style runs\n", runs.size());
-    printf("\nUnicode replacements:\n");
+    spdlog::info("Found {} style runs", runs.size());
+    spdlog::info("Unicode replacements:");
 
     for (size_t i = 0; i < runs.size(); i++) {
         const StyleRun& run = runs[i];
         if (!run.text.IsEmpty()) {
-            printf("  At offset %d: Replace with '%s'\n",
+            spdlog::info("  At offset {}: Replace with '{}'",
                    run.offset, run.text.String());
         }
     }
@@ -167,11 +167,11 @@ int main() {
     TSNode node = parser.GetNodeAtOffset(testOffset);
 
     if (!ts_node_is_null(node)) {
-        printf("\nNode at offset %d:\n", testOffset);
-        printf("  Type: %s\n", ts_node_type(node));
-        printf("  Range: [%u, %u)\n",
+        spdlog::info("Node at offset {}:", testOffset);
+        spdlog::info("  Type: {}", ts_node_type(node));
+        spdlog::info("  Range: [{}, {})",
                ts_node_start_byte(node), ts_node_end_byte(node));
-        printf("  Line: %d\n", parser.GetLineForOffset(testOffset));
+        spdlog::info("  Line: {}", parser.GetLineForOffset(testOffset));
     }
 
     PrintSeparator("TEST COMPLETE");
@@ -179,8 +179,8 @@ int main() {
 
 void ParserTest::PrintSeparator(const char* title)
 {
-    printf("\n");
-    printf("================================================================================\n");
-    printf("  %s\n", title);
-    printf("================================================================================\n");
+    spdlog::info("");
+    spdlog::info("================================================================================");
+    spdlog::info("  {}", title);
+    spdlog::info("================================================================================");
 }

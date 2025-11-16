@@ -11,7 +11,7 @@
 #include <Messenger.h>
 #include <ScrollView.h>
 #include <String.h>
-#include <stdio.h>
+#include <spdlog/spdlog.h>
 
 // OutlineListView implementation
 
@@ -36,7 +36,7 @@ void OutlineListView::CollapseAll() {
 void OutlineListView::SelectionChanged()
 {
     if (fSuppressSelectionChanged) {
-        printf("ignoring selection change.\n");
+        spdlog::debug("ignoring selection change.");
         return;
     }
 
@@ -46,11 +46,11 @@ void OutlineListView::SelectionChanged()
 
     OutlineItem* item = dynamic_cast<OutlineItem*>(FullListItemAt(index));
     if (!item) {
-        printf("could not get itemm at index %d\n", index);
+        spdlog::warn("could not get item at index {}", index);
         return;
     }
 
-    printf("Outline: sending selection update msg.\n");
+    spdlog::debug("sending selection update msg.");
 
     BMessage selectionMsg(MSG_OUTLINE_SELECTED);
     selectionMsg.AddInt32("offsetStart", item->Offset());
@@ -87,17 +87,17 @@ OutlinePanel::~OutlinePanel()
 
 void OutlinePanel::MessageReceived(BMessage* message)
 {
-    printf("OutlinePanel::MessageReceived\n");
+    spdlog::debug("MessageReceived");
 
     switch (message->what) {
         case MSG_OUTLINE_TOGGLE:
         {
             bool show = message->GetBool("show");
             if (show) {
-                printf("OutlinePanel: SHOW outline panel.\n");
+                spdlog::debug("SHOW outline panel.");
                 Show();
             } else {
-                printf("OutlinePanel: HIDE outline panel.\n");
+                spdlog::debug("HIDE outline panel.");
                 Hide();
             }
             break;
@@ -106,7 +106,7 @@ void OutlinePanel::MessageReceived(BMessage* message)
         {
             BMessage outline;
             if (message->FindMessage("outline", &outline) == B_OK) {
-                printf("OutlinePanel: UPDATE outline.\n");
+                spdlog::debug("UPDATE outline.");
                 UpdateOutline(&outline);
             }
             break;
@@ -127,7 +127,7 @@ void OutlinePanel::UpdateOutline(BMessage* outline)
 {
     if (!outline) return;
 
-    printf("OutlinePanel::UpdateOutline\n");
+    spdlog::debug("UpdateOutline");
 
     if (LockLooper()) {
         fListView->SuppressSelectionChanged(true);
@@ -138,11 +138,11 @@ void OutlinePanel::UpdateOutline(BMessage* outline)
     // Check if we have headings
     int32 count = 0;
     if (outline->IsEmpty() || outline->GetInfo("heading", NULL, &count) != B_OK || count == 0) {
-        printf("document is empty or has no headings.\n");
+        spdlog::debug("document is empty or has no headings.");
         return;
     }
 
-    printf("Adding %d headings\n", count);
+    spdlog::debug("Adding {} headings", count);
 
     // Use simple flat iteration with parent tracking
     AddHeadingsFlat(outline);
@@ -157,7 +157,7 @@ void OutlinePanel::AddHeadingsFlat(BMessage* outline)
     for (int32 i = 0; i < count; i++) {
         BMessage heading;
         if (outline->FindMessage("heading", i, &heading) != B_OK) {
-            printf("Failed to get heading %d\n", i);
+            spdlog::warn("Failed to get heading {}", i);
             continue;
         }
 
@@ -167,7 +167,7 @@ void OutlinePanel::AddHeadingsFlat(BMessage* outline)
         heading.FindInt32("level", &level);
         heading.FindInt32("offset", &offset);
 
-        printf("Adding H%d: %s at offset %d\n", level, text.String(), offset);
+        spdlog::debug("Adding H{}: {} at offset {}", level, text.String(), offset);
 
         // Create item with outline level (0-based for BOutlineListView)
         OutlineItem* item = new OutlineItem(text, offset, level - 1);
@@ -185,7 +185,7 @@ void OutlinePanel::HighlightCurrent(int32 offset)
     if (!fListView)
         return;
 
-    printf("highlight current outline item.\n");
+    spdlog::debug("highlight current outline item.");
 
     // Find item closest to offset (last heading before or at offset)
     int32 bestIndex = -1;

@@ -6,6 +6,7 @@
 #include "ColorDefs.h"
 #include <cstring>
 #include <string>
+#include <spdlog/spdlog.h>
 
 ColorDefs::ColorDefs()
 {
@@ -38,7 +39,7 @@ rgb_color* ColorDefs::HexToRgb(const char* hexStr)
 {
     int len = strlen(hexStr);
     if (len != 6 && len != 8) {   // only allow RGB or RGBA
-        printf("illegal argument %s, resorting to default black.\n", hexStr);
+        spdlog::warn("illegal argument {}, resorting to default black.", hexStr);
         return text_color[COLOR_BLACK];
     }
 

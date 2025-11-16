@@ -18,9 +18,9 @@
 #include <Region.h>
 #include <Window.h>
 
-#include <cstdio>
 #include <cstring>
 #include <strings.h>
+#include <spdlog/spdlog.h>
 
 static rgb_color GetColorForType(StyleRun::Type type) {
     for (size_t i = 0; i < sizeof(COLOR_MAP) / sizeof(COLOR_MAP[0]); i++) {
@@ -858,7 +858,7 @@ void EditorTextView::SendOutlineUpdate()
         update.AddMessage("outline", outline);
     }
 
-    printf("EditorTextView::SenOutlineUpdate...\n");
+    spdlog::debug("SendOutlineUpdate...");
 
     BMessenger(fEditorHandler).SendMessage(&update);
 }

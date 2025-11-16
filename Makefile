@@ -71,6 +71,8 @@ LIBS =  be localestub tracker \
 		tree-sitter-javascript \
 		tree-sitter-rust \
 		tree-sitter-go \
+		spdlog \
+		fmt \
 		$(STDCPPLIBS)
 
 #	Specify additional paths to directories following the standard libXXX.so

@@ -6,7 +6,7 @@
 #include <LayoutBuilder.h>
 #include <ObjectList.h>
 #include <Screen.h>
-#include <stdio.h>
+#include <spdlog/spdlog.h>
 
 #include "EditorView.h"
 #include "../common/Messages.h"
@@ -39,24 +39,24 @@ void EditorView::MessageReceived(BMessage* message) {
     switch (message->what) {
         case MSG_INSERT_ENTITY:
         {
-            printf("EditorView::insert type:\n");
+            spdlog::debug("insert type:");
             const char* label = message->GetString(MSG_PROP_LABEL);
             if (label != NULL) {
-                printf("will insert entity type %s.\n", label);
+                spdlog::debug("will insert entity type {}.", label);
             }
             break;
         }
         case MSG_ADD_HIGHLIGHT:
         {
-            printf("EditorView::add highlight for selection:\n");
+            spdlog::debug("add highlight for selection:");
             const char* label = message->GetString(MSG_PROP_LABEL);
             if (label != NULL) {
-                printf("highlight with label %s\n", label);
+                spdlog::debug("highlight with label {}", label);
                 // calculate highlight color
                 uint32 hash = BString(label).HashValue();
                 int colorIndex = (hash >> 2) % NUM_COLORS - 1;
 
-                printf("=== highlighting with screen color #%d.\n", colorIndex);
+                spdlog::debug("=== highlighting with screen color #{}.", colorIndex);
                 const rgb_color *col = fColorDefs->GetColor(static_cast<COLOR_NAME>(colorIndex));
                 fTextView->HighlightSelection(NULL, col);
             }
@@ -64,7 +64,7 @@ void EditorView::MessageReceived(BMessage* message) {
         }
         case MSG_OUTLINE_SELECTED:
         {
-            printf("EditorView: got SELECTION from outline panel.\n");
+            spdlog::debug("got SELECTION from outline panel.");
             // Jump to selected heading
             message->PrintToStream();
 
