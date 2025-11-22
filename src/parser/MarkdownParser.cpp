@@ -228,6 +228,7 @@ bool MarkdownParser::ParseIncremental(const char* markdownText,
     // Re-process (tree-sitter did the smart caching for us!)
     fStyleRuns.clear();
     TSNode root = ts_tree_root_node(fTree);
+
     ProcessNode(root, 0);
 
     // Rebuild outline
@@ -298,6 +299,7 @@ void MarkdownParser::ProcessNode(TSNode node, int depth)
     }
 
     // Determine style based on node type
+    // TODO: make it return Style or better TextMetadata with Style and other node properties
     StyleRun::Type styleType = GetStyleTypeForNode(node);
 
     if (styleType != StyleRun::Type::NORMAL) {
@@ -311,12 +313,14 @@ void MarkdownParser::ProcessNode(TSNode node, int depth)
             if (!ts_node_is_null(infoNode)) {
                 language = GetNodeText(infoNode);
                 language.Trim();
+                spdlog::debug("got language {}", language.String());
             }
         } else if (styleType == StyleRun::Type::LINK) {
             // Try to get URL from link_destination node
             TSNode destNode = ts_node_child_by_field_name(node, "link_destination", 16);
             if (!ts_node_is_null(destNode)) {
                 url = GetNodeText(destNode);
+                spdlog::debug("got URL {}", url.String());
             }
         }
 
@@ -393,17 +397,7 @@ void MarkdownParser::ProcessInlineNode(TSNode node, int32 baseOffset)
     int32 absoluteOffset = baseOffset + startByte;
 
     // Detect inline formatting
-    StyleRun::Type styleType = StyleRun::Type::NORMAL;
-
-    if (strcmp(nodeType, "strong_emphasis") == 0) {
-        styleType = StyleRun::Type::STRONG;
-    } else if (strcmp(nodeType, "emphasis") == 0) {
-        styleType = StyleRun::Type::EMPHASIS;
-    } else if (strcmp(nodeType, "code_span") == 0) {
-        styleType = StyleRun::Type::CODE_INLINE;
-    } else if (strcmp(nodeType, "inline_link") == 0 || strcmp(nodeType, "shortcut_link") == 0) {
-        styleType = StyleRun::Type::LINK;
-    }
+    StyleRun::Type styleType = GetStyleTypeForNode(node);
 
     if (styleType != StyleRun::Type::NORMAL) {
         CreateStyleRun(absoluteOffset, length, styleType);
@@ -419,56 +413,45 @@ void MarkdownParser::ProcessInlineNode(TSNode node, int32 baseOffset)
 
 StyleRun::Type MarkdownParser::GetStyleTypeForNode(TSNode node) const
 {
-    const char* type = ts_node_type(node);
+    BString type(ts_node_type(node));
 
     // Headings
-    if (strcmp(type, "atx_heading") == 0) {
-        int level = GetHeadingLevel(node);
+    if (type == "atx_heading") {
+        int32 level = GetHeadingLevel(node);
         return (StyleRun::Type)(StyleRun::Type::HEADING_1 + level - 1);
     }
 
     // Code
-    if (strcmp(type, "fenced_code_block") == 0 || strcmp(type, "indented_code_block") == 0) {
+    else if (type == "fenced_code_block" || type == "indented_code_block") {
         return StyleRun::Type::CODE_BLOCK;
     }
-    if (strcmp(type, "code_span") == 0) {
+    else if (type == "code_span") {
         return StyleRun::Type::CODE_INLINE;
     }
-
     // Emphasis
-    if (strcmp(type, "emphasis") == 0) {
+    else if (type == "emphasis") {
         return StyleRun::Type::EMPHASIS;
     }
-    if (strcmp(type, "strong_emphasis") == 0) {
+    else if (type == "strong_emphasis") {
         return StyleRun::Type::STRONG;
     }
-
-    // Underline
-    if (strcmp(type, "underscore") == 0) {
-        spdlog::debug("underline text detected");
-        return StyleRun::Type::UNDERLINE;
-    }
-
     // Strikethrough
-    if (strcmp(type, "strikethrough") == 0) {
-        spdlog::debug("strikethrough text detected");
+    else if (type == "strikethrough") {
         return StyleRun::Type::STRIKETHROUGH;
     }
-
     // Links
-    if (strcmp(type, "inline_link") == 0 || strcmp(type, "shortcut_link") == 0) {
+    else if (type == "inline_link" || type == "shortcut_link") {
         return StyleRun::Type::LINK;
     }
-
     // Blockquote
-    if (strcmp(type, "block_quote") == 0) {
+    else if (type == "block_quote") {
         return StyleRun::Type::BLOCKQUOTE;
     }
 
     // Tables - only style cells and delimiters, not container nodes
     // The pipe_table_header and pipe_table_row are just grouping containers
     // and should return NORMAL to avoid creating overlapping style runs
-    if (strcmp(type, "pipe_table_cell") == 0) {
+    else if (type == "pipe_table_cell") {
         // Check if this cell is in a header row by looking at parent
         TSNode parent = ts_node_parent(node);
         const char* parentType = ts_node_type(parent);
@@ -477,8 +460,9 @@ StyleRun::Type MarkdownParser::GetStyleTypeForNode(TSNode node) const
         }
         return StyleRun::Type::TABLE_CELL;
     }
-
     // List markers handled in ProcessNode
+
+    // fallback
     return StyleRun::Type::NORMAL;
 }
 

@@ -66,18 +66,21 @@ void EditorView::MessageReceived(BMessage* message) {
         {
             spdlog::debug("got SELECTION from outline panel.");
             // Jump to selected heading
-            message->PrintToStream();
-
-            int32 offset;
+            int32 offset, level;
             if (message->FindInt32("offsetStart", &offset) == B_OK) {
+                level = message->FindInt32("level");
+                offset += level + 2;    // 0-based + blank after #'s
                 fTextView->Select(offset, offset);
                 fTextView->ScrollToSelection();
                 fTextView->MakeFocus(true);
             }
             break;
         }
+        case MSG_OUTLINE_UPDATE:    // fallthrough, forward to parent
+        case MSG_OUTLINE_TOGGLE:
         case MSG_SELECTION_CHANGED:
         {
+            spdlog::debug("got editor message, forwarding to parent.");
             // hand over to parent which controls all views
             fParentHandler->MessageReceived(message);
             break;

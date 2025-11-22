@@ -36,7 +36,12 @@ public:
     void CollapseAll();
     virtual void SelectionChanged();
 
-    void SuppressSelectionChanged(bool suppress) { fSuppressSelectionChanged = suppress; }
+    void SuppressSelectionChanged(bool suppress) {
+        fSuppressSelectionChanged = suppress;
+        if (suppress) {
+            SetSelectionMessage(NULL);
+        }
+    }
 
 private:
     bool    fSuppressSelectionChanged;
@@ -58,4 +63,5 @@ private:
 
     BScrollView*        fScrollView;
     OutlineListView*    fListView;
+    BMessenger*         fTarget;
 };

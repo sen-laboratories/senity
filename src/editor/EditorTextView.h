@@ -76,7 +76,8 @@ private:
     void BuildContextMenu();
     void BuildContextSelectionMenu();
 
-    BHandler*           fEditorHandler;
+    const BHandler*     fEditorHandler;
+    BMessenger          fEditorMessenger;
 
     StatusBar*          fStatusBar;
 

@@ -128,6 +128,9 @@ EditorTextView::~EditorTextView()
 
 void EditorTextView::AttachedToWindow()
 {
+    fEditorMessenger.SetTo(fEditorHandler);
+    spdlog::debug("editorMessenger is {}", fEditorMessenger.IsValid() ? "valid" : "INVALID");
+
     BTextView::AttachedToWindow();
     BTextView::MakeFocus(true);
 }
@@ -575,9 +578,9 @@ void EditorTextView::ApplyStyles(int32 offset, int32 length)
     // Notify editor handler about outline update (e.g., for window title)
     // Note: StatusBar outline update happens in UpdateStatus() for better context
     BMessage* outline = fMarkdownParser->GetOutline();
-    if (outline && fEditorHandler) {
+    if (outline) {
         BMessage outlineCopy(*outline);
-        BMessenger(fEditorHandler).SendMessage(&outlineCopy);
+        fEditorMessenger.SendMessage(&outlineCopy);
     }
 }
 
@@ -746,7 +749,7 @@ void EditorTextView::UpdateStatus()
 
     int32 start, end;
     GetSelection(&start, &end);
-    int32 currentOffset = end;  // Use end as cursor position
+    int32 currentOffset = start;
 
     // Get line number from parser
     int32 line = fMarkdownParser ? fMarkdownParser->GetLineForOffset(start) : 0;
@@ -777,7 +780,7 @@ void EditorTextView::UpdateStatus()
     updateSelection.AddInt32("offsetStart", start);
     updateSelection.AddInt32("offsetEnd", end);
 
-    BMessenger(fEditorHandler).SendMessage(&updateSelection);
+    fEditorMessenger.SendMessage(&updateSelection);
 }
 
 void EditorTextView::BuildContextMenu()
@@ -850,7 +853,7 @@ void EditorTextView::RedrawHighlight(text_highlight *highlight)
 
 void EditorTextView::SendOutlineUpdate()
 {
-    if (!fEditorHandler || !fMarkdownParser) return;
+    if (!fMarkdownParser) return;
 
     BMessage update(MSG_OUTLINE_UPDATE);
     BMessage* outline = fMarkdownParser->GetOutline();
@@ -860,5 +863,5 @@ void EditorTextView::SendOutlineUpdate()
 
     spdlog::debug("SendOutlineUpdate...");
 
-    BMessenger(fEditorHandler).SendMessage(&update);
+    fEditorMessenger.SendMessage(&update);
 }

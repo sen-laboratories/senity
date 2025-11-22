@@ -92,9 +92,9 @@ public:
 private:
     // Tree-sitter state
     TSParser*   fParser;
-    TSParser*   fInlineParser;  // For inline markdown (emphasis, strong, links, etc.)
+    TSParser*   fInlineParser;          // For inline markdown (emphasis, strong, links, etc.)
     TSTree*     fTree;
-    const char* fSourceText;  // We need to keep a copy for tree-sitter
+    const char* fSourceText;            // We need to keep a copy for tree-sitter
     char*       fSourceCopy;
 
     // Output

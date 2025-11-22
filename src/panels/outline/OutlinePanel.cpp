@@ -55,6 +55,7 @@ void OutlineListView::SelectionChanged()
     BMessage selectionMsg(MSG_OUTLINE_SELECTED);
     selectionMsg.AddInt32("offsetStart", item->Offset());
     selectionMsg.AddInt32("offsetEnd", item->Offset());
+    selectionMsg.AddInt32("level", item->OutlineLevel());
 
     SetSelectionMessage(new BMessage(selectionMsg));
     BOutlineListView::SelectionChanged();
@@ -67,6 +68,8 @@ OutlinePanel::OutlinePanel(BRect frame, BMessenger* target)
               B_AUTO_UPDATE_SIZE_LIMITS | B_ASYNCHRONOUS_CONTROLS |
               B_NOT_ZOOMABLE | B_AVOID_FRONT | B_WILL_ACCEPT_FIRST_CLICK)
 {
+    fTarget = target;
+
     // Create custom list view
     fListView = new OutlineListView();
     fListView->SetTarget(*target);
@@ -111,6 +114,13 @@ void OutlinePanel::MessageReceived(BMessage* message)
             }
             break;
         }
+        case MSG_SELECTION_CHANGED: {
+            int32 offset = message->FindInt32("offsetStart");
+            // just update selection, don't back-propagate to editor!
+            fListView->SuppressSelectionChanged(true);
+                HighlightCurrent(offset);
+            fListView->SuppressSelectionChanged(false);
+        }
         default:
             BWindow::MessageReceived(message);
             break;
@@ -119,8 +129,9 @@ void OutlinePanel::MessageReceived(BMessage* message)
 
 bool OutlinePanel::QuitRequested()
 {
-    be_app_messenger.SendMessage(MSG_OUTLINE_TOGGLE);  // use MSG_PANEL_TOGGLE with unique ID
-    return true;
+    fTarget->SendMessage(MSG_OUTLINE_TOGGLE);  // TODO: use MSG_PANEL_TOGGLE with unique ID
+    Hide();
+    return false;   // don't quit, just hide
 }
 
 void OutlinePanel::UpdateOutline(BMessage* outline)

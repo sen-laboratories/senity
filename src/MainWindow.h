@@ -20,6 +20,8 @@ public:
 	virtual					~MainWindow();
 
 	virtual void			MessageReceived(BMessage* msg);
+    virtual bool            QuitRequested();
+
     BMessage*               GetWindowSettings() { return fSettings; };
 
 private:

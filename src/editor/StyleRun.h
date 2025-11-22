@@ -76,6 +76,7 @@ struct StyleRun {
     rgb_color background;   // Background color (optional)
 
     // Optional metadata
+    int32   level;          // for headings (level is stored in trailing symbol, not in heading node)
     BString url;            // For LINK type
     BString language;       // For CODE_BLOCK type
     BString text;           // Replacement text (e.g., Unicode symbols for bullets/checkboxes)

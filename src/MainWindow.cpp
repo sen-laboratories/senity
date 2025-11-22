@@ -62,7 +62,7 @@ def hello_world():
 MainWindow::MainWindow(const BMessage* settings)
 	:
 	BWindow(BRect(100.0, 100.0, 260.0, 480.0), B_TRANSLATE("New Note"), B_DOCUMENT_WINDOW,
-		B_ASYNCHRONOUS_CONTROLS | B_QUIT_ON_WINDOW_CLOSE)
+		B_ASYNCHRONOUS_CONTROLS)
 {
 	BMenuBar* menuBar = BuildMenu();
     fEditorView = new EditorView(this);
@@ -104,14 +104,26 @@ MainWindow::~MainWindow()
 {
 	delete fOpenPanel;
 	delete fSavePanel;
+    if (fOutlinePanel->Lock()) {
+        fOutlinePanel->Quit();
+    }
+}
+
+bool MainWindow::QuitRequested()
+{
+    // TODO: handle save check
+    be_app_messenger.SendMessage(MSG_WINDOW_CLOSED);
+    return true;
 }
 
 void MainWindow::ApplySettings(BMessage* settings)
 {
     spdlog::debug("Apply window settings...");
 
-    bool show = settings->GetBool(CONF_PANEL_OUTLINE_SHOW);
+    // FIXME: interim hard coded fix until plugin architecture is finished
+    bool show = settings->GetBool(CONF_PLUGIN_SHOW);
 	fOutlinePanelItem->SetMarked(show);
+
     if (!show)
         fOutlinePanel->Hide();
 }
@@ -189,12 +201,15 @@ void MainWindow::MessageReceived(BMessage* message)
             break;
 		}
 
-        // panels
+        // panels - TODO : use Observer with Notifications for uniform panel communication
         case MSG_OUTLINE_TOGGLE:
         {
-            spdlog::debug("toggle outline...");
-            bool show = ! fSettings->GetBool(CONF_PANEL_OUTLINE_SHOW);
-            fSettings->SetBool(CONF_PANEL_OUTLINE_SHOW, show);
+            bool show = ! fOutlinePanelItem->IsMarked();
+            spdlog::debug("toggle outline {}", show ? "ON" : "OFF");
+
+            // FIXME: interim hard coded fix until plugin architecture is finished
+            fSettings->SetBool(CONF_PLUGIN_SHOW, show);
+            fOutlinePanelItem->SetMarked(show);
 
             if (show)
                 fOutlinePanel->Show();
@@ -221,17 +236,9 @@ void MainWindow::MessageReceived(BMessage* message)
             }
             break;
         }
-        case MSG_OUTLINE_SELECTED: {
-            // forward to textview
-            spdlog::debug("forward SELECTION from outline panel.");
-            fEditorView->MessageReceived(message);
-            break;
-        }
         case MSG_SELECTION_CHANGED: {
-            // currently only affects outline position
-            int32 offset = message->FindInt32("offsetStart");
-            fOutlinePanel->HighlightCurrent(offset);
-
+            spdlog::debug("sending selection changed to outline panel...");
+            fOutlinePanel->MessageReceived(message);
             break;
         }
         case MSG_SETTINGS_CHANGED: {

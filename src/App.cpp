@@ -7,6 +7,7 @@
 #include <File.h>
 #include <FindDirectory.h>
 #include <Path.h>
+#include <SupportDefs.h>
 
 #include "AboutWindow.h"
 #include "App.h"
@@ -39,7 +40,7 @@ App::App()
 	BApplication(kApplicationSignature),
     fSettings(new BMessage(MSG_SETTINGS))
 {
-    auto console = spdlog::stdout_color_mt("console");
+    auto console = spdlog::stdout_color_mt("senity");
     spdlog::set_default_logger(console);
 
 	status_t status = LoadSettings(fSettings);
@@ -58,6 +59,7 @@ App::App()
 
     // todo: handle window roster
     MainWindow* mainWindow = new MainWindow(fSettings);
+    atomic_add(&fWindowCount, 1);
 	mainWindow->Show();
 }
 
@@ -125,7 +127,8 @@ void App::AboutRequested()
 	about->Show();
 }
 
-void App::ArgvReceived(int32 argc, char ** argv) {
+void App::ArgvReceived(int32 argc, char ** argv)
+{
     BMessage refsMsg(B_REFS_RECEIVED);
 
     // currently we only treat the 1st arg as file name if it exists, else we just open a new document
@@ -141,6 +144,21 @@ void App::ArgvReceived(int32 argc, char ** argv) {
         refsMsg.AddRef("refs", &ref);
 
         RefsReceived(&refsMsg);
+    }
+}
+
+void App::MessageReceived(BMessage* message)
+{
+    switch(message->what) {
+        case MSG_WINDOW_CLOSED: {
+            atomic_add(&fWindowCount, -1);
+            if (fWindowCount == 0) {
+                Quit();
+            }
+            break;
+        }
+        default:
+            BApplication::MessageReceived(message);
     }
 }
 

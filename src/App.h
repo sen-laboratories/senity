@@ -13,6 +13,7 @@ public:
 	virtual					~App();
     virtual void            ArgvReceived(int32 argc, char ** argv);
 	virtual void			AboutRequested();
+    virtual	void            MessageReceived(BMessage* message);
 
 private:
     status_t	        	LoadSettings(BMessage* settings);
@@ -20,5 +21,6 @@ private:
     void                    ApplySettings(BMessage* settings);
 
     BMessage*               fSettings;
+    int32                   fWindowCount;
 };
 
