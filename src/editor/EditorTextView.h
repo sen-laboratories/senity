@@ -9,12 +9,17 @@
 #include "../parser/MarkdownParser.h"
 #include "../parser/SyntaxHighlighter.h"
 
+#include <Mime.h>
 #include <TextView.h>
 #include <Handler.h>
 #include <map>
+#include <string>
 
 class BFile;
 class BRegion;
+
+// Unicode placeholder character for file icons
+#define ICON_PLACEHOLDER_CHAR "\uFFFC"
 
 struct text_highlight {
     int32 startOffset;
@@ -65,6 +70,13 @@ public:
     BMessage* GetHeadingsInRange(int32 startOffset, int32 endOffset);
     BMessage* GetSiblingHeadings(int32 offset);
 
+    // link icons
+    void HandleFileDrop(BMessage* dropMessage);
+    status_t LoadFileIcon(const entry_ref* ref, BBitmap* icon, icon_size size);
+    BString  ExtractLinkUrl(int32 placeholderOffset);
+
+    status_t QuerySenId(entry_ref *ref, const char* senId);
+
 private:
     void ApplyStyles(int32 offset, int32 length);
     void UpdateStatus();
@@ -75,6 +87,10 @@ private:
 
     void BuildContextMenu();
     void BuildContextSelectionMenu();
+
+    // link icons
+    void ClearIconCache();
+    void DrawIcons(BRect updateRect);
 
     const BHandler*     fEditorHandler;
     BMessenger          fEditorMessenger;
@@ -90,5 +106,6 @@ private:
     BFont* fTableFont;
     BFont* fTableHeaderFont;
 
-    std::map<int32, text_highlight*>* fTextHighlights;
+    std::map<int32, text_highlight*>*   fTextHighlights;
+    std::map<std::string, BBitmap*>     fIconCache;
 };

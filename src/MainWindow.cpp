@@ -132,8 +132,26 @@ void MainWindow::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
 		case B_SIMPLE_DATA:
+        {
+            spdlog::debug("received B_SIMPLE_DATA message");
+            if (message->WasDropped()) {
+                // forward to editor
+                spdlog::debug("drag&drop -> Editor.");
+                fEditorView->MessageReceived(message);
+                break;
+            }
+            break;
+        }
 		case B_REFS_RECEIVED:
 		{
+            spdlog::debug("received B_REFS_RECEIVED message");
+            if (message->WasDropped()) {
+                // forward to editor
+                spdlog::debug("drag&drop -> Editor.");
+                fEditorView->MessageReceived(message);
+                break;
+            }
+
             spdlog::debug("handling simple data/refs received msg.");
 
 			entry_ref ref;

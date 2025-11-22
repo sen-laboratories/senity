@@ -5,21 +5,29 @@
 
 #include "../common/ColorDefs.h"
 #include "../common/Messages.h"
+#include "../common/SenConnector.h"
 #include "EditorTextView.h"
 #include "StyleRun.h"
 
-#include <vector>
+#include <sen/Sen.h>
+
+#include <Bitmap.h>
+#include <IconUtils.h>
 #include <Clipboard.h>
 #include <File.h>
 #include <MenuItem.h>
 #include <Message.h>
 #include <Messenger.h>
+#include <MimeType.h>
+#include <Node.h>
+#include <NodeInfo.h>
+#include <Path.h>
 #include <PopUpMenu.h>
 #include <Region.h>
 #include <Window.h>
-
 #include <cstring>
 #include <strings.h>
+#include <vector>
 #include <spdlog/spdlog.h>
 
 static rgb_color GetColorForType(StyleRun::Type type) {
@@ -116,6 +124,8 @@ EditorTextView::~EditorTextView()
     delete fLinkFont;
     delete fCodeFont;
 
+    ClearIconCache();
+
     // Clean up highlight map (now mostly unused but keep for compatibility)
     if (fTextHighlights) {
         for (auto& pair : *fTextHighlights) {
@@ -125,6 +135,16 @@ EditorTextView::~EditorTextView()
         delete fTextHighlights;
     }
 }
+
+void
+EditorTextView::ClearIconCache()
+{
+    for (auto& pair : fIconCache) {
+        delete pair.second;
+    }
+    fIconCache.clear();
+}
+
 
 void EditorTextView::AttachedToWindow()
 {
@@ -138,6 +158,8 @@ void EditorTextView::AttachedToWindow()
 void EditorTextView::Draw(BRect updateRect)
 {
     BTextView::Draw(updateRect);
+
+    DrawIcons(updateRect);
 
     // Draw Unicode symbols over ASCII markdown characters
     if (fMarkdownParser) {
@@ -229,6 +251,99 @@ void EditorTextView::Draw(BRect updateRect)
             SetDrawingMode(B_OP_COPY);
         }
     }
+}
+
+void
+EditorTextView::DrawIcons(BRect updateRect)
+{
+    // Calculate icon size based on line height
+    font_height fh;
+    GetFontHeight(&fh);
+    float lineHeight = ceilf(fh.ascent + fh.descent + fh.leading);
+    float iconSize = lineHeight * 0.9f; // 90% of line height for some breathing room
+    float yOffset = (lineHeight - iconSize) / 2.0f;
+
+    // Overdraw icon placeholders
+    int32 offsetStart = OffsetAt(updateRect.LeftTop());
+    int32 offsetEnd   = OffsetAt(updateRect.RightBottom());
+    int32 textLength  = offsetEnd - offsetStart + 1;
+
+    char text[textLength];
+    GetText(offsetStart, textLength, text);
+
+    for (int32 offset = offsetStart; offset < offsetEnd; offset++) {
+        if (strncmp(&text[offset], ICON_PLACEHOLDER_CHAR,
+                    strlen(ICON_PLACEHOLDER_CHAR)) == 0) {
+
+            // Extract link URL
+            BString linkUrl = ExtractLinkUrl(offset);
+            if (linkUrl.Length() == 0) {
+                continue;
+            }
+
+            // Look up icon
+            auto it = fIconCache.find(linkUrl.String());
+            if (it != fIconCache.end() && it->second) {
+                BBitmap* icon = it->second;
+
+                // Get position and create scaled rect
+                BPoint iconPos = PointAt(offset);
+                BRect iconRect(
+                    iconPos.x,
+                    iconPos.y + yOffset,
+                    iconPos.x + iconSize,
+                    iconPos.y + yOffset + iconSize
+                );
+
+                // Draw if in update region
+                if (updateRect.Intersects(iconRect)) {
+                    SetDrawingMode(B_OP_ALPHA);
+                    DrawBitmap(icon, iconRect);
+                    SetDrawingMode(B_OP_COPY);
+                }
+            }
+
+            offset += strlen(ICON_PLACEHOLDER_CHAR) - 1;
+        }
+    }
+}
+
+BString
+EditorTextView::ExtractLinkUrl(int32 placeholderOffset)
+{
+    //FIXME replace this Claude cruft with proper GetNode() in ts_ API
+    const char* text = Text();
+    int32 textLength = TextLength();
+
+    // Skip placeholder
+    int32 pos = placeholderOffset + strlen(ICON_PLACEHOLDER_CHAR);
+
+    // Find opening parenthesis
+    while (pos < textLength && text[pos] != '(') {
+        if (text[pos] == '\n' || pos - placeholderOffset > 256) {
+            return BString();
+        }
+        pos++;
+    }
+
+    if (pos >= textLength || text[pos] != '(') {
+        return BString();
+    }
+
+    pos++; // Skip '('
+
+    // Extract URL until ')'
+    int32 urlStart = pos;
+    while (pos < textLength && text[pos] != ')') {
+        pos++;
+    }
+
+    if (pos >= textLength) {
+        return BString();
+    }
+
+    BString url(&text[urlStart], pos - urlStart);
+    return url;
 }
 
 void EditorTextView::SetText(BFile *file, int32 offset, size_t size)
@@ -357,6 +472,13 @@ void EditorTextView::InsertText(const char* text, int32 length, int32 offset, co
 void EditorTextView::MessageReceived(BMessage* message)
 {
     switch (message->what) {
+        case B_REFS_RECEIVED:
+            spdlog::debug("B_REFS_RECEIVED.");
+        case B_SIMPLE_DATA:
+        {
+            HandleFileDrop(message);
+            break;
+        }
         case 'HLIT':
         {
             // Handle highlight message
@@ -647,6 +769,97 @@ void EditorTextView::ClearHighlights()
     fTextHighlights->clear();
 
     Invalidate();
+}
+
+void
+EditorTextView::HandleFileDrop(BMessage* dropMessage)
+{
+    // Get drop position
+    BPoint dropPoint;
+    int32 dropOffset = 0;
+
+    if (dropMessage->FindPoint("_drop_point_", &dropPoint) == B_OK) {
+        ConvertFromScreen(&dropPoint);
+        dropOffset = OffsetAt(dropPoint);
+    } else {
+        int32 start, end;
+        GetSelection(&start, &end);
+        dropOffset = start;
+    }
+
+    entry_ref ref;
+    status_t result = dropMessage->FindRef("refs", &ref);
+    if (result != B_OK) {
+        spdlog::warn("no file ref found in drop message!");
+        return;
+    }
+
+    // Get file info
+    BEntry entry(&ref);
+    BPath path;
+    entry.GetPath(&path);
+
+    // Build link URL
+    BString linkText(ref.name);
+    BString linkUrl;
+
+    // SEN:ID if available
+    char senId[SEN_ID_LEN];
+    result = SenConnector::QueryForSenId(&ref, senId);
+
+    if (result == B_OK) {
+        linkUrl.SetToFormat("sen://%lld", senId);
+    } else {
+        // SEN server not running / could not get ID -> fall back to path
+        linkUrl.SetToFormat("file://%s", path.Path());
+    }
+
+    // Load and cache icon
+    BBitmap icon(BRect(0, 0, 31, 31), B_CMAP8);
+    result = LoadFileIcon(&ref, &icon, B_LARGE_ICON);
+
+    if (result == B_OK) {
+        fIconCache[linkUrl.String()] = new BBitmap(icon);
+    } else {
+        spdlog::warn("failed to retrieve icon for file {}: {}", path.Path(), strerror(result));
+    }
+
+    // Build markdown link with icon placeholder
+    BString markdownLink;
+    markdownLink.SetToFormat("%s[%s](%s)",
+        ICON_PLACEHOLDER_CHAR, linkText.String(), linkUrl.String());
+
+    // Insert at drop position
+    Insert(dropOffset, markdownLink.String(), markdownLink.Length());
+    Select(dropOffset + markdownLink.Length(), dropOffset + markdownLink.Length());
+
+    // Re-parse for syntax highlighting
+    MarkupText(Text());
+}
+
+status_t EditorTextView::LoadFileIcon(const entry_ref* ref, BBitmap* icon, icon_size size)
+{
+    // for the icon, always get the original file
+    BEntry targetEntry(ref, true);
+    spdlog::debug("target entry for ref {} is: {}", ref->name, targetEntry.Name());
+    BNode node(&targetEntry);
+    spdlog::debug("node status is {}", strerror(node.InitCheck()) );
+    BNodeInfo nodeInfo(&node);
+
+    // first, try node icon for specific icon
+    status_t result = nodeInfo.GetIcon(icon, size);
+    if (result != B_OK) {
+        spdlog::debug("could not get icon for node: {}", strerror(result));
+        // get generic icon from MIME DB
+        char type[B_MIME_TYPE_LENGTH];
+        nodeInfo.GetType(type);
+        spdlog::debug("get MIME icon for type {}", type);
+
+        BMimeType mimeType(type);
+        result = mimeType.GetIcon(icon, size);
+    }
+
+    return result;
 }
 
 BMessage* EditorTextView::GetOutlineAt(int32 offset, bool withNames)

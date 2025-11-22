@@ -79,12 +79,12 @@ LIBS =  be localestub tracker \
 #	to the Makefile. The paths included are not parsed recursively, so
 #	include all of the paths where libraries must be found. Directories where
 #	source files were specified are	automatically included.
-LIBPATHS = $(HOME)/config/non-packaged/lib
+LIBPATHS = $(shell findpaths -e B_FIND_PATH_LIB_DIRECTORY)
 
 #	Additional paths to look for system headers. These use the form
 #	"#include <header>". Directories that contain the files in SRCS are
 #	NOT auto-included here.
-SYSTEM_INCLUDE_PATHS = $(shell findpaths -e B_FIND_PATH_HEADERS_DIRECTORY && findpaths -e B_FIND_PATH_DEVELOP_HEADERS_DIRECTORY private/interface)
+SYSTEM_INCLUDE_PATHS = $(shell findpaths -e B_FIND_PATH_HEADERS_DIRECTORY) private/interface
 
 #	Additional paths paths to look for local headers. These use the form
 #	#include "header". Directories that contain the files in SRCS are
